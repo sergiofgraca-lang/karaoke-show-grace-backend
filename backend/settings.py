@@ -124,3 +124,8 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
+import os
+
+ALLOWED_HOSTS = ['*']
+
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
