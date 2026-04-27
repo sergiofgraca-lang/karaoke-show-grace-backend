@@ -6,7 +6,7 @@ from .views import deletar_musica
 from .views import ranking
 
 urlpatterns = [
-    path('login/', login),
+   
     path('salvar/', salvar_musica),
     path('listar/', listar_musicas),
     path('deletar/<int:id>/', deletar_musica),
