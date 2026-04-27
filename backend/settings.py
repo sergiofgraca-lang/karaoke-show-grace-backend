@@ -37,8 +37,9 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-     'usuarios',
+    'usuarios',
     'corsheaders',
+    'rest_framework',
     
 ]
 
@@ -129,3 +130,15 @@ import os
 ALLOWED_HOSTS = ['*']
 
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
+from datetime import timedelta
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+}
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=5),
+}
