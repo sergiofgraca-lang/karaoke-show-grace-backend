@@ -37,24 +37,12 @@ import json
 from .models import Musica
 
 @csrf_exempt
+from django.http import JsonResponse
+
 def salvar_musica(request):
-    if request.method == "POST":
-        try:
-            data = json.loads(request.body)
+    print("🔥 CHEGOU NO SALVAR:", request.method)
 
-            Musica.objects.create(
-                titulo=data.get("titulo"),
-                videoId=data.get("videoId"),
-                cantor=data.get("cantor")
-            )
-
-            return JsonResponse({"status": "ok"})
-
-        except Exception as e:
-            return JsonResponse({"status": "erro", "detalhe": str(e)})
-
-    return JsonResponse({"status": "metodo invalido"}, status=405)
-
+    return JsonResponse({"status": "backend ok"})
 
 # 🔥 LISTAR MÚSICAS
 def listar_musicas(request):
