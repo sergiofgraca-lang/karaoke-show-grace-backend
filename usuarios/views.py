@@ -6,7 +6,6 @@ from django.db.models import Count
 from django.contrib.auth.models import User
 
 
-# 🔥 CRIAR ADMIN (TESTE)
 def criar_admin(request):
     if not User.objects.filter(username="admin").exists():
         User.objects.create_superuser(
@@ -18,7 +17,6 @@ def criar_admin(request):
     return JsonResponse({"status": "já existe"})
 
 
-# 🔥 RANKING
 def ranking(request):
     dados = (
         Musica.objects
@@ -30,27 +28,25 @@ def ranking(request):
     return JsonResponse(list(dados), safe=False)
 
 
-# 🔥 SALVAR MÚSICA (CORRIGIDO DEFINITIVO)
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-import json
-from .models import Musica
-
 @csrf_exempt
-from django.http import JsonResponse
-
 def salvar_musica(request):
-    print("🔥 CHEGOU NO SALVAR:", request.method)
+    if request.method == "POST":
+        data = json.loads(request.body)
 
-    return JsonResponse({"status": "backend ok"})
+        Musica.objects.create(
+            titulo=data.get("titulo"),
+            videoId=data.get("videoId"),
+            cantor=data.get("cantor")
+        )
 
-# 🔥 LISTAR MÚSICAS
+        return JsonResponse({"status": "ok"})
+
+
 def listar_musicas(request):
     musicas = Musica.objects.all().values()
     return JsonResponse(list(musicas), safe=False)
 
 
-# 🔥 DELETAR MÚSICA
 @csrf_exempt
 def deletar_musica(request, id):
     if request.method == "DELETE":
@@ -60,5 +56,3 @@ def deletar_musica(request, id):
             return JsonResponse({"status": "ok"})
         except:
             return JsonResponse({"status": "erro"})
-
-    return JsonResponse({"status": "metodo nao permitido"}, status=405)
