@@ -51,14 +51,12 @@ INSTALLED_APPS = [
 # =========================
 
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware',
-
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
 
-    # 🔥 CSRF ATIVO (OBRIGATÓRIO EM PRODUÇÃO)
-    'django.middleware.csrf.CsrfViewMiddleware',
+    # ❌ REMOVER ou comentar isso em API pura
+    # 'django.middleware.csrf.CsrfViewMiddleware',
 
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',

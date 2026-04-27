@@ -1,7 +1,6 @@
 from django.contrib import admin
 from django.urls import path, include
 
-# 🔥 JWT LOGIN
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
@@ -10,10 +9,10 @@ from rest_framework_simplejwt.views import (
 urlpatterns = [
     path('admin/', admin.site.urls),
 
-    # suas APIs
+    # 🔥 API
     path('api/', include('usuarios.urls')),
 
-    # 🔥 LOGIN JWT (FALTAVA ISSO)
-    path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    # JWT
+    path('api/token/', TokenObtainPairView.as_view()),
+    path('api/token/refresh/', TokenRefreshView.as_view()),
 ]
