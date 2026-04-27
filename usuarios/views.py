@@ -4,6 +4,18 @@ from .models import Musica
 from django.views.decorators.csrf import csrf_exempt
 from django.db.models import Count
 from .models import Musica
+from django.contrib.auth.models import User
+from django.http import JsonResponse
+
+def criar_admin(request):
+    if not User.objects.filter(username="admin").exists():
+        User.objects.create_superuser(
+            username="admin",
+            password="123456"
+        )
+        return JsonResponse({"status": "admin criado"})
+    
+    return JsonResponse({"status": "já existe"})
 
 def ranking(request):
     dados = (
