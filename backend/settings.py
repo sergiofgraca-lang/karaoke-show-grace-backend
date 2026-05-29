@@ -14,12 +14,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # 🔐 SEGURANÇA
 # =========================
 
-SECRET_KEY = 'django-insecure-q7g3&iwmslbo0om(0q(fuixt!g*smr(bl!b4z9-dz7)3yz)gh0'
+SECRET_KEY = "django-insecure-q7g3&iwmslbo0om(0q(fuixt!g*smr(bl!b4z9-dz7)3yz)gh0"
 
 DEBUG = True
 
 ALLOWED_HOSTS = [
-    "karaoke-show-grace-backend-production.up.railway.app",
+    ".vercel.app",
     "localhost",
     "127.0.0.1",
 ]
@@ -30,19 +30,17 @@ ALLOWED_HOSTS = [
 # =========================
 
 INSTALLED_APPS = [
-    'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
 
-    # apps do projeto
-    'usuarios',
+    "usuarios",
 
-    # libs
-    'corsheaders',
-    'rest_framework',
+    "corsheaders",
+    "rest_framework",
 ]
 
 
@@ -54,6 +52,10 @@ MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
 
     "django.middleware.security.SecurityMiddleware",
+
+    # importante p/ Vercel
+    "whitenoise.middleware.WhiteNoiseMiddleware",
+
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
 
@@ -69,12 +71,10 @@ MIDDLEWARE = [
 
 CORS_ALLOW_CREDENTIALS = True
 
-# libera previews e domínio da Vercel
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^https://.*\.vercel\.app$",
 ]
 
-# ambiente local
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://localhost:5174",
@@ -82,7 +82,6 @@ CORS_ALLOWED_ORIGINS = [
 
 CSRF_TRUSTED_ORIGINS = [
     "https://*.vercel.app",
-    "https://karaoke-show-grace-backend-production.up.railway.app",
 ]
 
 
@@ -90,7 +89,7 @@ CSRF_TRUSTED_ORIGINS = [
 # URLS
 # =========================
 
-ROOT_URLCONF = 'backend.urls'
+ROOT_URLCONF = "backend.urls"
 
 
 # =========================
@@ -99,21 +98,21 @@ ROOT_URLCONF = 'backend.urls'
 
 TEMPLATES = [
     {
-        'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
-        'APP_DIRS': True,
-        'OPTIONS': {
-            'context_processors': [
-                'django.template.context_processors.request',
-                'django.contrib.auth.context_processors.auth',
-                'django.contrib.messages.context_processors.messages',
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
             ],
         },
     },
 ]
 
 
-WSGI_APPLICATION = 'backend.wsgi.application'
+WSGI_APPLICATION = "backend.wsgi.application"
 
 
 # =========================
@@ -121,9 +120,9 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 # =========================
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+    "default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": BASE_DIR / "db.sqlite3",
     }
 }
 
@@ -133,10 +132,10 @@ DATABASES = {
 # =========================
 
 AUTH_PASSWORD_VALIDATORS = [
-    {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
-    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
-    {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
-    {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
+    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
 
@@ -144,8 +143,9 @@ AUTH_PASSWORD_VALIDATORS = [
 # INTERNACIONALIZAÇÃO
 # =========================
 
-LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC'
+LANGUAGE_CODE = "pt-br"
+
+TIME_ZONE = "America/Sao_Paulo"
 
 USE_I18N = True
 USE_TZ = True
@@ -155,20 +155,26 @@ USE_TZ = True
 # STATIC
 # =========================
 
-STATIC_URL = 'static/'
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+STATIC_URL = "static/"
+STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
+
+STATICFILES_STORAGE = (
+    "whitenoise.storage.CompressedManifestStaticFilesStorage"
+)
 
 
 # =========================
-# DJANGO REST + JWT
+# REST + JWT
 # =========================
 
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
 }
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(hours=5),
+    "ACCESS_TOKEN_LIFETIME": timedelta(hours=5),
 }
+
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
