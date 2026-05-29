@@ -9,29 +9,37 @@ from .models import Musica
 @csrf_exempt
 def salvar_musica(request):
 
-    # se abrir no navegador
     if request.method == "GET":
         return JsonResponse(
             {"mensagem": "Use POST para salvar música"},
             status=200
         )
 
-    # salvar pelo React
     if request.method == "POST":
-        data = json.loads(request.body)
+        try:
+            body = request.body.decode("utf-8")
 
-        Musica.objects.create(
-            titulo=data.get("titulo"),
-            videoId=data.get("videoId"),
-            cantor=data.get("cantor"),
-        )
+            data = json.loads(body) if body else {}
 
-        return JsonResponse(
-            {"status": "ok"},
-            status=201
-        )
+            Musica.objects.create(
+                titulo=data.get("titulo", ""),
+                videoId=data.get("videoId", ""),
+                cantor=data.get("cantor", ""),
+            )
 
-    # qualquer outro método
+            return JsonResponse(
+                {"status": "ok"},
+                status=201
+            )
+
+        except Exception as e:
+            print("ERRO SALVAR:", str(e))
+
+            return JsonResponse(
+                {"erro": str(e)},
+                status=500
+            )
+
     return JsonResponse(
         {"erro": "Método não permitido"},
         status=405
