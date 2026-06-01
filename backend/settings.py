@@ -2,8 +2,15 @@
 Django settings for backend project.
 """
 
+import os
 from pathlib import Path
+import dj_database_url
+from dotenv import load_dotenv
 from datetime import timedelta
+
+load_dotenv()
+
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -14,11 +21,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = "django-insecure-q7g3&iwmslbo0om(0q(fuixt!g*smr(bl!b4z9-dz7)3yz)gh0"
 
-DEBUG = False
+DDEBUG = True
 
 ALLOWED_HOSTS = [
-    ".vercel.app",
+    "127.0.0.1",
     "localhost",
+    ".vercel.app",
 ]
 
 
@@ -128,13 +136,29 @@ WSGI_APPLICATION = "backend.wsgi.application"
 # DATABASE
 # =========================
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
-    }
-}
 
+
+# =========================
+# DATABASE
+# =========================
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if DATABASE_URL:
+    DATABASES = {
+        "default": dj_database_url.parse(
+            DATABASE_URL,
+            conn_max_age=600,
+            ssl_require=True,
+        )
+    }
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
+    }
 
 # =========================
 # PASSWORD VALIDATION
