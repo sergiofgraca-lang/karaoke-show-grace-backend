@@ -55,10 +55,11 @@ INSTALLED_APPS = [
 # =========================
 
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
 
-    "corsheaders.middleware.CorsMiddleware",
+    
 
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -75,9 +76,16 @@ MIDDLEWARE = [
 # =========================
 
 CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+
     "https://karaoke-show-grace-new.vercel.app",
+
+    "https://karaoke-show-grace.vercel.app",
 ]
 
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.vercel\.app$",
+]
 CORS_ALLOW_CREDENTIALS = True
 
 
