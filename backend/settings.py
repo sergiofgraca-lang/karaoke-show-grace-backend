@@ -22,10 +22,12 @@ SECRET_KEY = "django-insecure-q7g3&iwmslbo0om(0q(fuixt!g*smr(bl!b4z9-dz7)3yz)gh0
 DEBUG = True
 
 ALLOWED_HOSTS = [
-    "localhost",
     "127.0.0.1",
+    "localhost",
+
     "karaoke-show-grace-backend.vercel.app",
-    "karaoke-show-grace-new.vercel.app",
+
+    ".vercel.app",
 ]
 
 
