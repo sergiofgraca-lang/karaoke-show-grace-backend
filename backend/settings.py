@@ -10,8 +10,6 @@ from datetime import timedelta
 
 load_dotenv()
 
-
-
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
@@ -21,12 +19,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = "django-insecure-q7g3&iwmslbo0om(0q(fuixt!g*smr(bl!b4z9-dz7)3yz)gh0"
 
-DDEBUG = True
+DEBUG = True
 
 ALLOWED_HOSTS = [
-    "127.0.0.1",
     "localhost",
-    ".vercel.app",
+    "127.0.0.1",
+    "karaoke-show-grace-backend.vercel.app",
+    "karaoke-show-grace-new.vercel.app",
 ]
 
 
@@ -50,7 +49,7 @@ INSTALLED_APPS = [
 
 
 # =========================
-# MIDDLEWARE (CORRETO PARA VERCEL)
+# MIDDLEWARE
 # =========================
 
 MIDDLEWARE = [
@@ -59,9 +58,9 @@ MIDDLEWARE = [
 
     "corsheaders.middleware.CorsMiddleware",
 
+    "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
 
-    "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
@@ -70,36 +69,24 @@ MIDDLEWARE = [
 
 
 # =========================
-# CORS (VERSÃO ESTÁVEL VERCEL)
+# CORS
 # =========================
 
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOWED_ORIGINS = [
+    "https://karaoke-show-grace-new.vercel.app",
+]
 
 CORS_ALLOW_CREDENTIALS = True
 
-CORS_ALLOW_METHODS = [
-    "DELETE",
-    "GET",
-    "OPTIONS",
-    "PATCH",
-    "POST",
-    "PUT",
-]
-
-CORS_ALLOW_HEADERS = [
-    "authorization",
-    "content-type",
-    "accept",
-    "origin",
-    "x-requested-with",
-]
-
 
 # =========================
-# CSRF (DESATIVADO PARA API JWT)
+# CSRF
 # =========================
 
-CSRF_TRUSTED_ORIGINS = []
+CSRF_TRUSTED_ORIGINS = [
+    "https://karaoke-show-grace-new.vercel.app",
+    "https://karaoke-show-grace-backend.vercel.app",
+]
 
 
 # =========================
@@ -136,12 +123,6 @@ WSGI_APPLICATION = "backend.wsgi.application"
 # DATABASE
 # =========================
 
-
-
-# =========================
-# DATABASE
-# =========================
-
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 if DATABASE_URL:
@@ -160,15 +141,24 @@ else:
         }
     }
 
+
 # =========================
 # PASSWORD VALIDATION
 # =========================
 
 AUTH_PASSWORD_VALIDATORS = [
-    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
-    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
-    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
-    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+    {
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"
+    },
+    {
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"
+    },
+    {
+        "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"
+    },
+    {
+        "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"
+    },
 ]
 
 
@@ -207,5 +197,6 @@ REST_FRAMEWORK = {
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(hours=5),
 }
+
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
