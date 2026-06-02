@@ -19,14 +19,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = "django-insecure-q7g3&iwmslbo0om(0q(fuixt!g*smr(bl!b4z9-dz7)3yz)gh0"
 
-DEBUG = True
+DEBUG = os.getenv("DEBUG", "False") == "True"
 
 ALLOWED_HOSTS = [
     "127.0.0.1",
     "localhost",
-
     "karaoke-show-grace-backend.vercel.app",
-
     ".vercel.app",
 ]
 
@@ -59,8 +57,6 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
 
-    
-
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
 
@@ -77,15 +73,14 @@ MIDDLEWARE = [
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
-
     "https://karaoke-show-grace-new.vercel.app",
-
     "https://karaoke-show-grace.vercel.app",
 ]
 
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^https://.*\.vercel\.app$",
 ]
+
 CORS_ALLOW_CREDENTIALS = True
 
 
@@ -130,26 +125,16 @@ WSGI_APPLICATION = "backend.wsgi.application"
 
 
 # =========================
-# DATABASE
+# DATABASE (NEON POSTGRES)
 # =========================
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-
-if DATABASE_URL:
-    DATABASES = {
-        "default": dj_database_url.parse(
-            DATABASE_URL,
-            conn_max_age=600,
-            ssl_require=True,
-        )
-    }
-else:
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db.sqlite3",
-        }
-    }
+DATABASES = {
+    "default": dj_database_url.config(
+        default=os.getenv("DATABASE_URL"),
+        conn_max_age=600,
+        ssl_require=True,
+    )
+}
 
 
 # =========================
