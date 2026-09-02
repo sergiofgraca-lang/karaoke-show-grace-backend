@@ -19,5 +19,7 @@ urlpatterns = [
     path("audios/", listar_audios),
     path("associar-audio/", associar_audio),
     path("audio/<str:video_id>/", audio_da_musica),
-    path("download/", processar_audio_youtube ),  # <--- Nova rota para o React disparar
+    path(
+        "download/", processar_audio_youtube
+    ),  # <--- Nova rota para o React disparar
 ]

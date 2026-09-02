@@ -1,7 +1,3 @@
-"""
-Django settings for backend project.
-"""
-
 import os
 from pathlib import Path
 import dj_database_url
@@ -47,6 +43,8 @@ INSTALLED_APPS = [
     "rest_framework",
 
     "usuarios",
+
+    
 ]
 
 
@@ -75,6 +73,12 @@ MIDDLEWARE = [
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
+    "http://localhost:5174",
+    "http://localhost:5175",
+    "http://localhost:5178",
+    "http://localhost:5177",
+
+
     "https://karaoke-show-grace-new.vercel.app",
     "https://karaoke-show-grace.vercel.app",
 ]
@@ -176,6 +180,10 @@ USE_TZ = True
 # =========================
 
 STATIC_URL = "static/"
+
+MEDIA_ROOT = BASE_DIR / "backend" / "media"
+MEDIA_URL = "/media/"
+
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
