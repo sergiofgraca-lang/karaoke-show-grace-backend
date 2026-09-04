@@ -1,24 +1,22 @@
 from django.urls import path
-
 from .views import (
-    associar_audio,
-    audio_da_musica,
-    deletar_musica,
-    listar_audios,
+    processar_audio_youtube,  # Nossa view rápida e blindada
     listar_musicas,
-    processar_audio_youtube,  # <--- Mudamos aqui para o nome novo da sua view
+    deletar_musica,
     ranking,
-    
+    listar_audios,
+    associar_audio,
 )
 
 urlpatterns = [
-    # Mapeia a rota antiga "salvar/" diretamente para a nova lógica da view
     path("salvar/", processar_audio_youtube),
     path("listar/", listar_musicas),
     path("deletar/<int:id>/", deletar_musica),
     path("ranking/", ranking),
     path("audios/", listar_audios),
     path("associar-audio/", associar_audio),
-    path("audio/<str:video_id>/", audio_da_musica),
     
+    # FORÇAR A ROTA QUE O SEU FRONTEND ANTIGO ESTÁ PROCURANDO:
+    # Quando o React bater em /api/audio/ID/, o Django responde com a URL perfeita!
+    path("audio/<str:video_id>/", processar_audio_youtube), 
 ]
