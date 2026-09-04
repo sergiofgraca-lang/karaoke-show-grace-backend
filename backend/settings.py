@@ -71,17 +71,21 @@ MIDDLEWARE = [
 # CORS
 # =========================
 
+
+# Permite que o seu Frontend acesse a API do Django na nuvem
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://localhost:5174",
-    "http://localhost:5175",
-    "http://localhost:5178",
-    "http://localhost:5177",
-
-
-    "https://karaoke-show-grace-new.vercel.app",
-    "https://karaoke-show-grace.vercel.app",
+    "https://karaoke-show-grace-new.vercel.app",  # <--- SEU FRONTEND ATUAL NA VERCEL
+    "http://localhost:5173",                      # Mantém o local para testes
+    "http://127.0.0.1:5173",
 ]
+
+# Certifique-se também de que o domínio do backend está nos ALLOWED_HOSTS
+ALLOWED_HOSTS = [
+    "karaoke-show-grace-backend.vercel.app",
+    "localhost",
+    "127.0.0.1",
+]
+
 
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^https://.*\.vercel\.app$",

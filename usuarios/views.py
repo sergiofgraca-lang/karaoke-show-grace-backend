@@ -649,15 +649,7 @@ def encontrar_audio(titulo, cantor=""):
 # SALVAR MÚSICA
 # =========================================================
 
-import json
-import os
-import re
-import unicodedata
-from django.conf import settings
-from django.db.models import Count
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from .models import Musica
+
 
 # =========================================================
 # LIMPAR TEXTO
@@ -775,7 +767,6 @@ def processar_audio_youtube(request):
         },
         status=201
     )
-
 
 
 # =========================================================

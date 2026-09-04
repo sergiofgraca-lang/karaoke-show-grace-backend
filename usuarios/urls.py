@@ -1,23 +1,24 @@
 from django.urls import path
 
+from django.urls import path
+
 from .views import (
     associar_audio,
     audio_da_musica,
     deletar_musica,
     listar_audios,
     listar_musicas,
-    processar_audio_youtube,  # <--- Nova função importada aqui
+    processar_audio_youtube,  # <--- Mudamos aqui para o nome novo da sua view
     ranking,
-    salvar_musica,
 )
 
 urlpatterns = [
-    path("salvar/", salvar_musica),
+    # Mapeia a rota antiga "salvar/" diretamente para a nova lógica da view
+    path("salvar/", processar_audio_youtube),
     path("listar/", listar_musicas),
     path("deletar/<int:id>/", deletar_musica),
     path("ranking/", ranking),
     path("audios/", listar_audios),
     path("associar-audio/", associar_audio),
     path("audio/<str:video_id>/", audio_da_musica),
-    path("download/", processar_audio_youtube ),  # <--- Nova rota para o React disparar
 ]
