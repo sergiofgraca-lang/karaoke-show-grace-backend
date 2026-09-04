@@ -13,6 +13,33 @@ from supabase import create_client
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SECRET_KEY = os.getenv("SUPABASE_SECRET_KEY")
 
+@csrf_exempt
+def testar_supabase(request):
+    try:
+        if not SUPABASE_URL:
+            return JsonResponse(
+                {"erro": "SUPABASE_URL não configurada"},
+                status=500
+            )
+
+        if not SUPABASE_SECRET_KEY:
+            return JsonResponse(
+                {"erro": "SUPABASE_SECRET_KEY não configurada"},
+                status=500
+            )
+
+        return JsonResponse({
+            "status": "ok",
+            "mensagem": "Supabase configurado corretamente."
+        })
+
+    except Exception as e:
+        print("❌ ERRO SUPABASE:", str(e))
+
+        return JsonResponse({
+            "erro": str(e)
+        }, status=500)
+
 supabase = create_client(
     SUPABASE_URL,
     SUPABASE_SECRET_KEY
