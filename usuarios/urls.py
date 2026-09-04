@@ -1,6 +1,6 @@
 from django.urls import path
 from .views import (
-    processar_audio_youtube,  # Nossa view rápida e blindada
+    processar_audio_youtube,  # Sua view unificada e rápida
     listar_musicas,
     deletar_musica,
     ranking,
@@ -16,7 +16,8 @@ urlpatterns = [
     path("audios/", listar_audios),
     path("associar-audio/", associar_audio),
     
-    # FORÇAR A ROTA QUE O SEU FRONTEND ANTIGO ESTÁ PROCURANDO:
-    # Quando o React bater em /api/audio/ID/, o Django responde com a URL perfeita!
-    path("audio/<str:video_id>/", processar_audio_youtube), 
+    # 🎯 ESPELHAMENTO DE PRODUÇÃO:
+    # O seu front antigo procura por "/api/audio/VIDEO_ID/". Forçamos o Django
+    # a responder essa rota entregando a URL corrigida com as barras!
+    path("audio/<str:video_id>/", processar_audio_youtube),
 ]
