@@ -1,12 +1,12 @@
+import os 
 import json
-import os
 import re
 import unicodedata
 from django.conf import settings
 from django.db.models import Count
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from .models import Musica
+from .models import Musica  # Garanta que o seu import está correto
 
 # =========================================================
 # LIMPAR TEXTO
@@ -25,7 +25,7 @@ def limpar_texto(texto):
 
 
 # =========================================================
-# PROCESSAR ÁUDIO DO YOUTUBE (PRODUÇÃO VERCEL DEFINITIVO)
+# PROCESSAR ÁUDIO DO YOUTUBE (VERSÃO ULTRA-LEVE PARA VERCEL)
 # =========================================================
 @csrf_exempt
 def processar_audio_youtube(request):
@@ -55,18 +55,10 @@ def processar_audio_youtube(request):
     titulo_limpo = limpar_texto(titulo)
     cantor_limpo = limpar_texto(cantor)
 
-    # 4. VERIFICAÇÃO DE DUPLICIDADE
+    # 4. VERIFICAÇÃO DE DUPLICIDADE NO BANCO DA SUPABASE
     musica_existente = Musica.objects.filter(videoId=video_id).first()
 
     if musica_existente:
-        audio_salvo = str(musica_existente.audio)
-        
-        # Se já for uma URL completa HTTP, repassa direto, caso contrário monta o caminho estático
-        if audio_salvo.startswith("http://") or audio_salvo.startswith("https://"):
-            audio_existente = audio_salvo
-        else:
-            audio_existente = settings.MEDIA_URL + audio_salvo
-
         return JsonResponse(
             {
                 "status": "sucesso",
@@ -75,12 +67,11 @@ def processar_audio_youtube(request):
                 "titulo": musica_existente.titulo,
                 "videoId": musica_existente.videoId,
                 "cantor": musica_existente.cantor,
-                "audio_url": audio_existente,
+                "audio_url": str(musica_existente.audio),
             }
         )
 
-    # 5. CONFIGURAÇÃO DE URL DIRETA (ROBUSTA PARA VERCEL SERVERLESS)
-    # Geramos o link formatado com as barras corretas para a API externa de áudio livre de CORS
+    # 5. ASSOCIAÇÃO DA URL EXTERNA DE STREAM (Livre de downloads e pastas)
     audio_registrado = f"https://vevioz.com{video_id}"
 
     # 6. SALVAR REGISTRO NO BANCO POSTGRESQL DA SUPABASE
@@ -89,12 +80,12 @@ def processar_audio_youtube(request):
             titulo=titulo_limpo,
             videoId=video_id,
             cantor=cantor_limpo,
-            audio=audio_registrado, # Grava a URL externa corrigida com as barras
+            audio=audio_registrado,
         )
     except Exception as e:
         return JsonResponse({"erro": f"Erro na Supabase: {str(e)}"}, status=500)
 
-    # 7. RETORNAR DIRETAMENTE A URL DA API DE STREAM SEM ADICIONAR O PREFIXO /MEDIA/
+    # 7. RETORNAR SUCESSO INSTANTÂNEO PARA O REACT
     return JsonResponse(
         {
             "status": "sucesso",
@@ -103,7 +94,7 @@ def processar_audio_youtube(request):
             "titulo": nova_musica.titulo,
             "videoId": nova_musica.videoId,
             "cantor": nova_musica.cantor,
-            "audio_url": nova_musica.audio, # Retorna a URL direta limpa
+            "audio_url": nova_musica.audio,
         },
         status=201
     )

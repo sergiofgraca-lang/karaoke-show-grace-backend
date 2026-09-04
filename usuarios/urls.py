@@ -8,7 +8,7 @@ from .views import (
     listar_musicas,
     processar_audio_youtube,  # <--- Mudamos aqui para o nome novo da sua view
     ranking,
-    testar_supabase,
+    
 )
 
 urlpatterns = [
@@ -20,5 +20,5 @@ urlpatterns = [
     path("audios/", listar_audios),
     path("associar-audio/", associar_audio),
     path("audio/<str:video_id>/", audio_da_musica),
-    path("testar-supabase/", testar_supabase),
+    
 ]
