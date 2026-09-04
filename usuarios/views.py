@@ -27,20 +27,16 @@ def limpar_texto(texto):
 
 
 # =========================================================
-# PROCESSAR ÁUDIO DO YOUTUBE (HÍBRIDO: LOCAL VS VERCEL)
+# PROCESSAR ÁUDIO DO YOUTUBE (VERSÃO PRODUÇÃO CORRIGIDA)
 # =========================================================
 @csrf_exempt
 def processar_audio_youtube(request):
 
-    # -----------------------------------------------------
     # 1. VALIDAR MÉTODO
-    # -----------------------------------------------------
     if request.method != "POST":
         return JsonResponse({"erro": "Método inválido. Use POST."}, status=405)
 
-    # -----------------------------------------------------
     # 2. CAPTURAR DADOS
-    # -----------------------------------------------------
     if request.content_type == "application/json":
         try:
             dados = json.loads(request.body)
@@ -54,9 +50,7 @@ def processar_audio_youtube(request):
         titulo = request.POST.get("titulo")
         cantor = request.POST.get("cantor", "")
 
-    # -----------------------------------------------------
     # 3. VALIDAR CAMPOS
-    # -----------------------------------------------------
     if not video_id or not titulo:
         return JsonResponse(
             {"erro": "Os campos videoId e titulo são obrigatórios."}, status=400
@@ -65,17 +59,17 @@ def processar_audio_youtube(request):
     titulo_limpo = limpar_texto(titulo)
     cantor_limpo = limpar_texto(cantor)
 
-    # -----------------------------------------------------
-    # 4. VERIFICAR DUPLICIDADE
-    # -----------------------------------------------------
+    # 4. VERIFICAÇÃO DE DUPLICIDADE
     musica_existente = Musica.objects.filter(videoId=video_id).first()
 
     if musica_existente:
-        audio_existente = (
-            settings.MEDIA_URL + str(musica_existente.audio)
-            if musica_existente.audio
-            else ""
-        )
+        audio_salvo = str(musica_existente.audio)
+        # Se o áudio no banco já for uma URL externa completa, não adiciona MEDIA_URL
+        if audio_salvo.startswith("http://") or audio_salvo.startswith("https://"):
+            audio_existente = audio_salvo
+        else:
+            audio_existente = settings.MEDIA_URL + audio_salvo
+
         return JsonResponse(
             {
                 "status": "sucesso",
@@ -88,20 +82,20 @@ def processar_audio_youtube(request):
             }
         )
 
-    # -----------------------------------------------------
-    # 5. CONFIGURAR CAMINHOS PADRÕES
-    # -----------------------------------------------------
-    nome_arquivo = str(video_id)
-    caminho_relativo_django = f"audio/{nome_arquivo}.mp3"
-    audio_registrado = caminho_relativo_django
-
-    # DETECÇÃO DO AMBIENTE: Vercel injeta variáveis como VERCEL=1 ou VERCEL_ENV
+    # 5. DETECÇÃO DO AMBIENTE (VERCEL VS LOCAL)
     is_vercel = os.environ.get("VERCEL") == "1" or "VERCEL_URL" in os.environ
+    nome_arquivo = str(video_id)
 
-    # -----------------------------------------------------
-    # 6. SÓ INICIA PROCESSAMENTO PESADO SE NÃO ESTIVER NA VERCEL
-    # -----------------------------------------------------
-    if not is_vercel:
+    # 6. DEFINIÇÃO DA URL DEPENDENDO DO AMBIENTE
+    if is_vercel:
+        # CORREÇÃO DA URL: API pública estável com formatação de rota limpa para o Tone.js ler
+        audio_registrado = f"https://vevioz.com{video_id}"
+        print("🚀 VERCEL DETECTADA: Vinculando stream direto.")
+    else:
+        # Se for localhost, mantém a lógica de arquivo físico local
+        caminho_relativo_django = f"audio/{nome_arquivo}.mp3"
+        audio_registrado = caminho_relativo_django
+
         pasta_audio = os.path.join(settings.MEDIA_ROOT, "audio")
         os.makedirs(pasta_audio, exist_ok=True)
         caminho_absoluto_mp3 = os.path.join(pasta_audio, f"{nome_arquivo}.mp3")
@@ -116,12 +110,6 @@ def processar_audio_youtube(request):
             "ignoreerrors": False,
             "no_warnings": True,
             "quiet": True,
-            "http_headers": {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "en-us,en;q=0.5",
-                "Sec-Fetch-Mode": "navigate",
-            },
             "postprocessors": [
                 {
                     "key": "FFmpegExtractAudio",
@@ -132,29 +120,15 @@ def processar_audio_youtube(request):
         }
 
         try:
-            url_youtube = f"https://www.youtube.com/watch?v={video_id}"
-            print("🎬 LOCALHOST: INICIANDO DOWNLOAD DO ÁUDIO")
+            url_youtube = f"https://youtube.com{video_id}"
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url_youtube])
-
             if not os.path.exists(caminho_absoluto_mp3):
-                return JsonResponse(
-                    {"erro": "O arquivo MP3 não pôde ser gerado localmente."},
-                    status=500,
-                )
-
+                return JsonResponse({"erro": "Erro ao gerar arquivo local."}, status=500)
         except Exception as e:
-            return JsonResponse(
-                {"erro": f"Falha no download/conversão local: {str(e)}"},
-                status=500,
-            )
-    else:
-        # Se estiver na Vercel, apenas pula o download e deixa o caminho textual pronto.
-        print("🚀 AMBIENTE VERCEL DETECTADO: Salvando associação direta.")
+            return JsonResponse({"erro": f"Falha local: {str(e)}"}, status=500)
 
-    # -----------------------------------------------------
-    # 7. SALVAR NO BANCO DE DADOS (SUPABASE OU LOCAL)
-    # -----------------------------------------------------
+    # 7. SALVAR NO BANCO POSTGRESQL DA SUPABASE
     try:
         nova_musica = Musica.objects.create(
             titulo=titulo_limpo,
@@ -163,28 +137,27 @@ def processar_audio_youtube(request):
             audio=audio_registrado,
         )
     except Exception as e:
-        print("❌ ERRO AO SALVAR MÚSICA NO BANCO:", str(e))
-        return JsonResponse(
-            {"erro": f"Erro ao salvar música no banco: {str(e)}"}, status=500
-        )
+        return JsonResponse({"erro": f"Erro na Supabase: {str(e)}"}, status=500)
 
-    # -----------------------------------------------------
-    # 8. MONTAR RETORNO E FINALIZAR
-    # -----------------------------------------------------
-    url_audio = settings.MEDIA_URL + str(nova_musica.audio)
+    # 8. MONTAR RETORNO INTELIGENTE (EVITA DUPLICAR PREFIXOS HTTP)
+    if str(nova_musica.audio).startswith("http://") or str(nova_musica.audio).startswith("https://"):
+        url_audio_retorno = str(nova_musica.audio)
+    else:
+        url_audio_retorno = settings.MEDIA_URL + str(nova_musica.audio)
 
     return JsonResponse(
         {
             "status": "sucesso",
-            "mensagem": "Música cadastrada com áudio mapeado.",
+            "mensagem": "Música cadastrada com sucesso.",
             "id": nova_musica.id,
             "titulo": nova_musica.titulo,
             "videoId": nova_musica.videoId,
             "cantor": nova_musica.cantor,
-            "audio_url": url_audio,
+            "audio_url": url_audio_retorno,
         },
         status=201,
     )
+
 
 
 # =========================================================
