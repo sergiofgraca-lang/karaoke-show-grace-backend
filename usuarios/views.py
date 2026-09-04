@@ -2,11 +2,19 @@ import json
 import os
 import re
 import unicodedata
+import yt_dlp
+import requests
 from django.conf import settings
-from django.db.models import Count
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
+from supabase import create_client, Client
 from .models import Musica
+
+# CONFIGURAÇÃO SUPABASE STORAGE
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://supabase.co")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "sua-chave-anon-public-do-supabase")
+supabase_client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+NOME_DO_BUCKET = "audio" # Crie um bucket chamado 'audio' no painel do seu Supabase Storage
 
 def limpar_texto(texto):
     if not texto:
@@ -42,28 +50,56 @@ def processar_audio_youtube(request):
     titulo_limpo = limpar_texto(titulo)
     cantor_limpo = limpar_texto(cantor)
 
-    # 1. LINK DE PRODUÇÃO PERFEITO COM PROTOCOLO, SUBDOMÍNIO E AS BARRAS DA API
-    audio_registrado = f"https://vevioz.com{video_id}"
-
-    # 2. VERIFICAÇÃO DE DUPLICIDADE NO BANCO DA SUPABASE
+    # 1. VERIFICAÇÃO DE DUPLICIDADE
     musica_existente = Musica.objects.filter(videoId=video_id).first()
     if musica_existente:
-        # Se a música antiga no banco tiver o link quebrado sem barras, nós corrigimos forçado
-        if "api/button" not in str(musica_existente.audio) or "/media/" in str(musica_existente.audio):
-            musica_existente.audio = audio_registrado
-            musica_existente.save()
-            
         return JsonResponse({
             "status": "sucesso",
             "id": musica_existente.id,
             "titulo": musica_existente.titulo,
             "videoId": musica_existente.videoId,
             "cantor": musica_existente.cantor,
-            # Injetamos o link limpo em todas as chaves possíveis que o front antigo possa tentar ler
-            "audio": audio_registrado,
-            "url": audio_registrado,
-            "audio_url": audio_registrado
+            "audio_url": str(musica_existente.audio)
         })
+
+    # 2. CAPTURAR FLUXO DE ÁUDIO REAL VIA YT-DLP (SEM SALVAR EM DISCO NA VERCEL)
+    url_audio_final = ""
+    nome_arquivo_supabase = f"{video_id}.mp3"
+    
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'quiet': True,
+        'no_warnings': True,
+        'skip_download': True,
+    }
+
+    try:
+        url_youtube = f"https://youtube.com{video_id}"
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url_youtube, download=False)
+            stream_url = info.get('url', '')
+            
+            if stream_url:
+                # Baixamos o pedaço do fluxo de áudio diretamente na memória RAM da Vercel
+                resposta_stream = requests.get(stream_url, stream=True, timeout=10)
+                conteudo_audio = resposta_stream.content
+                
+                # Enviamos o arquivo binário bruto diretamente para o Supabase Storage (Bucket 'audio')
+                supabase_client.storage.from_(NOME_DO_BUCKET).upload(
+                    path=nome_arquivo_supabase,
+                    file=conteudo_audio,
+                    file_options={"content-type": "audio/mp3"}
+                )
+                
+                # Montamos a URL pública permanente gerada pelo próprio Supabase
+                url_audio_final = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{nome_arquivo_supabase}"
+                
+    except Exception as e:
+        print(f"⚠️ Falha no upload para o Supabase Storage: {str(e)}")
+
+    # Fallback de segurança se o Storage falhar
+    if not url_audio_final:
+        url_audio_final = f"https://vevioz.com{video_id}"
 
     # 3. SALVAR REGISTRO NO BANCO POSTGRESQL DA SUPABASE
     try:
@@ -71,22 +107,18 @@ def processar_audio_youtube(request):
             titulo=titulo_limpo,
             videoId=video_id,
             cantor=cantor_limpo,
-            audio=audio_registrado,
+            audio=url_audio_final,
         )
     except Exception as e:
         return JsonResponse({"erro": f"Erro na Supabase: {str(e)}"}, status=500)
 
     return JsonResponse({
         "status": "sucesso",
-        "mensagem": "Música cadastrada com sucesso.",
         "id": nova_musica.id,
         "titulo": nova_musica.titulo,
         "videoId": nova_musica.videoId,
         "cantor": nova_musica.cantor,
-        # Devolvemos a URL limpa de stream nas propriedades mapeadas
-        "audio": audio_registrado,
-        "url": audio_registrado,
-        "audio_url": audio_registrado
+        "audio_url": nova_musica.audio,
     }, status=201)
 
 
