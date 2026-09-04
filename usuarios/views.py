@@ -42,41 +42,49 @@ def processar_audio_youtube(request):
     titulo_limpo = limpar_texto(titulo)
     cantor_limpo = limpar_texto(cantor)
 
-    # 1. GERAR A URL DE STREAM REAL COMPATÍVEL COM VERCEL E LOCALHOST
-    # Independentemente do ambiente, forçamos o banco e o retorno a entregarem o link pronto
+    # BLINDAGEM DO LINK: Forçamos a URL com a API de conversão de áudio oficial e barras limpas
     audio_registrado = f"https://vevioz.com{video_id}"
 
-    # 2. VERIFICAÇÃO DE DUPLICIDADE
+    # VERIFICAÇÃO DE DUPLICIDADE NO POSTGRES DA SUPABASE
     musica_existente = Musica.objects.filter(videoId=video_id).first()
     if musica_existente:
+        # Se existir e tiver link de mídia local antigo, nós limpamos forçando o stream direto
+        if not str(musica_existente.audio).startswith("http"):
+            musica_existente.audio = audio_registrado
+            musica_existente.save()
+            
         return JsonResponse({
             "status": "sucesso",
             "id": musica_existente.id,
             "titulo": musica_existente.titulo,
             "videoId": musica_existente.videoId,
             "cantor": musica_existente.cantor,
-            "audio_url": audio_registrado, # Força o retorno corrigido
+            "audio": str(musica_existente.audio),
+            "url": str(musica_existente.audio)
         })
 
-    # 3. SALVAR NO BANCO POSTGRESQL DA SUPABASE
+    # SALVAR REGISTRO NO BANCO DA SUPABASE
     try:
         nova_musica = Musica.objects.create(
             titulo=titulo_limpo,
             videoId=video_id,
             cantor=cantor_limpo,
-            audio=audio_registrado,
+            audio=audio_registrado, # Grava o link do stream com as barras
         )
     except Exception as e:
         return JsonResponse({"erro": f"Erro na Supabase: {str(e)}"}, status=500)
 
     return JsonResponse({
         "status": "sucesso",
+        "mensagem": "Música cadastrada com áudio associado com sucesso.",
         "id": nova_musica.id,
         "titulo": nova_musica.titulo,
         "videoId": nova_musica.videoId,
         "cantor": nova_musica.cantor,
-        "audio_url": audio_registrado, # Entrega o link pronto para o front-end
+        "audio": audio_registrado, # Retorna o link que seu front antigo lê perfeitamente
+        "url": audio_registrado
     }, status=201)
+
 
 # ============================================================
 # LISTAR MÚSICAS
