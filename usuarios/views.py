@@ -2,24 +2,19 @@ import json
 import os
 import re
 import unicodedata
-
 import yt_dlp
-
 from django.conf import settings
 from django.db.models import Count
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-
 from .models import Musica
 
 
 # =========================================================
 # LIMPAR TEXTO
 # =========================================================
-
 def limpar_texto(texto):
     """Remove caracteres especiais e normaliza strings."""
-
     if not texto:
         return "Desconhecido"
 
@@ -28,53 +23,33 @@ def limpar_texto(texto):
         .encode("ascii", "ignore")
         .decode("utf-8")
     )
-
     return texto.strip()
 
 
 # =========================================================
-# PROCESSAR ÁUDIO DO YOUTUBE
+# PROCESSAR ÁUDIO DO YOUTUBE (HÍBRIDO: LOCAL VS VERCEL)
 # =========================================================
-
 @csrf_exempt
 def processar_audio_youtube(request):
 
     # -----------------------------------------------------
     # 1. VALIDAR MÉTODO
     # -----------------------------------------------------
-
     if request.method != "POST":
-        return JsonResponse(
-            {
-                "erro": "Método inválido. Use POST."
-            },
-            status=405
-        )
+        return JsonResponse({"erro": "Método inválido. Use POST."}, status=405)
 
     # -----------------------------------------------------
     # 2. CAPTURAR DADOS
     # -----------------------------------------------------
-
     if request.content_type == "application/json":
-
         try:
             dados = json.loads(request.body)
-
             video_id = dados.get("videoId")
             titulo = dados.get("titulo")
             cantor = dados.get("cantor", "")
-
         except json.JSONDecodeError:
-
-            return JsonResponse(
-                {
-                    "erro": "JSON inválido."
-                },
-                status=400
-            )
-
+            return JsonResponse({"erro": "JSON inválido."}, status=400)
     else:
-
         video_id = request.POST.get("videoId")
         titulo = request.POST.get("titulo")
         cantor = request.POST.get("cantor", "")
@@ -82,14 +57,9 @@ def processar_audio_youtube(request):
     # -----------------------------------------------------
     # 3. VALIDAR CAMPOS
     # -----------------------------------------------------
-
     if not video_id or not titulo:
-
         return JsonResponse(
-            {
-                "erro": "Os campos videoId e titulo são obrigatórios."
-            },
-            status=400
+            {"erro": "Os campos videoId e titulo são obrigatórios."}, status=400
         )
 
     titulo_limpo = limpar_texto(titulo)
@@ -98,19 +68,14 @@ def processar_audio_youtube(request):
     # -----------------------------------------------------
     # 4. VERIFICAR DUPLICIDADE
     # -----------------------------------------------------
-
-    musica_existente = Musica.objects.filter(
-        videoId=video_id
-    ).first()
+    musica_existente = Musica.objects.filter(videoId=video_id).first()
 
     if musica_existente:
-
         audio_existente = (
             settings.MEDIA_URL + str(musica_existente.audio)
             if musica_existente.audio
             else ""
         )
-
         return JsonResponse(
             {
                 "status": "sucesso",
@@ -124,253 +89,101 @@ def processar_audio_youtube(request):
         )
 
     # -----------------------------------------------------
-    # 5. CONFIGURAR PASTA DE ÁUDIO
+    # 5. CONFIGURAR CAMINHOS PADRÕES
     # -----------------------------------------------------
-
-    pasta_audio = os.path.join(
-        settings.MEDIA_ROOT,
-        "audio"
-    )
-
-    os.makedirs(
-        pasta_audio,
-        exist_ok=True
-    )
-
     nome_arquivo = str(video_id)
+    caminho_relativo_django = f"audio/{nome_arquivo}.mp3"
+    audio_registrado = caminho_relativo_django
 
-    caminho_absoluto_mp3 = os.path.join(
-        pasta_audio,
-        f"{nome_arquivo}.mp3"
-    )
-
-    caminho_relativo_django = (
-        f"audio/{nome_arquivo}.mp3"
-    )
+    # DETECÇÃO DO AMBIENTE: Vercel injeta variáveis como VERCEL=1 ou VERCEL_ENV
+    is_vercel = os.environ.get("VERCEL") == "1" or "VERCEL_URL" in os.environ
 
     # -----------------------------------------------------
-    # 6. CONFIGURAR YT-DLP
+    # 6. SÓ INICIA PROCESSAMENTO PESADO SE NÃO ESTIVER NA VERCEL
     # -----------------------------------------------------
+    if not is_vercel:
+        pasta_audio = os.path.join(settings.MEDIA_ROOT, "audio")
+        os.makedirs(pasta_audio, exist_ok=True)
+        caminho_absoluto_mp3 = os.path.join(pasta_audio, f"{nome_arquivo}.mp3")
+        caminho_ffmpeg_projeto = os.path.join(settings.BASE_DIR, "ffmpeg_bin")
 
-    caminho_ffmpeg_projeto = os.path.join(
-        settings.BASE_DIR,
-        "ffmpeg_bin"
-    )
+        ydl_opts = {
+            "format": "bestaudio/best",
+            "outtmpl": os.path.join(pasta_audio, nome_arquivo + ".%(ext)s"),
+            "ffmpeg_location": caminho_ffmpeg_projeto,
+            "source_address": "0.0.0.0",
+            "nocheckcertificate": True,
+            "ignoreerrors": False,
+            "no_warnings": True,
+            "quiet": True,
+            "http_headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-us,en;q=0.5",
+                "Sec-Fetch-Mode": "navigate",
+            },
+            "postprocessors": [
+                {
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "mp3",
+                    "preferredquality": "128",
+                }
+            ],
+        }
 
-    ydl_opts = {
+        try:
+            url_youtube = f"https://www.youtube.com/watch?v={video_id}"
+            print("🎬 LOCALHOST: INICIANDO DOWNLOAD DO ÁUDIO")
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url_youtube])
 
-        "format": "bestaudio/best",
-
-        "outtmpl": os.path.join(
-            pasta_audio,
-            nome_arquivo + ".%(ext)s"
-        ),
-
-        "ffmpeg_location": caminho_ffmpeg_projeto,
-
-        "source_address": "0.0.0.0",
-
-        "nocheckcertificate": True,
-
-        "ignoreerrors": False,
-
-        "no_warnings": True,
-
-        "quiet": True,
-
-        "http_headers": {
-            "User-Agent": (
-                "Mozilla/5.0 "
-                "(Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 "
-                "(KHTML, like Gecko) "
-                "Chrome/120.0.0.0 "
-                "Safari/537.36"
-            ),
-
-            "Accept": (
-                "text/html,"
-                "application/xhtml+xml,"
-                "application/xml;q=0.9,"
-                "*/*;q=0.8"
-            ),
-
-            "Accept-Language": "en-us,en;q=0.5",
-
-            "Sec-Fetch-Mode": "navigate",
-        },
-
-        "postprocessors": [
-            {
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "128",
-            }
-        ],
-    }
-
-    # -----------------------------------------------------
-    # 7. BAIXAR ÁUDIO
-    # -----------------------------------------------------
-
-    audio_registrado = ""
-
-    try:
-
-        url_youtube = (
-            f"https://www.youtube.com/watch?v={video_id}"
-        )
-
-        print(
-            "🎬 INICIANDO DOWNLOAD DO ÁUDIO"
-        )
-
-        print(
-            "🎵 Video ID:",
-            video_id
-        )
-
-        print(
-            "🔗 URL:",
-            url_youtube
-        )
-
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-
-            ydl.download(
-                [url_youtube]
-            )
-
-        # -------------------------------------------------
-        # 8. VERIFICAR MP3
-        # -------------------------------------------------
-
-        if os.path.exists(
-            caminho_absoluto_mp3
-        ):
-
-            audio_registrado = (
-                caminho_relativo_django
-            )
-
-            print(
-                "✅ MP3 CRIADO:",
-                caminho_absoluto_mp3
-            )
-
-        else:
-
-            print(
-                "❌ MP3 NÃO FOI CRIADO:"
-            )
-
-            print(
-                caminho_absoluto_mp3
-            )
-
-    except Exception as e:
-
-        print(
-            "❌ ERRO AO TENTAR EXTRAIR ÁUDIO:"
-        )
-
-        print(
-            str(e)
-        )
-
-        return JsonResponse(
-            {
-                "erro": (
-                    f"Falha no download/conversão: {str(e)}"
+            if not os.path.exists(caminho_absoluto_mp3):
+                return JsonResponse(
+                    {"erro": "O arquivo MP3 não pôde ser gerado localmente."},
+                    status=500,
                 )
-            },
-            status=500
-        )
+
+        except Exception as e:
+            return JsonResponse(
+                {"erro": f"Falha no download/conversão local: {str(e)}"},
+                status=500,
+            )
+    else:
+        # Se estiver na Vercel, apenas pula o download e deixa o caminho textual pronto.
+        print("🚀 AMBIENTE VERCEL DETECTADO: Salvando associação direta.")
 
     # -----------------------------------------------------
-    # 9. VERIFICAÇÃO FINAL
+    # 7. SALVAR NO BANCO DE DADOS (SUPABASE OU LOCAL)
     # -----------------------------------------------------
-
-    if not audio_registrado:
-
-        return JsonResponse(
-            {
-                "erro": (
-                    "A música foi recebida, "
-                    "mas o arquivo MP3 não foi criado."
-                ),
-
-                "videoId": video_id,
-            },
-            status=500
-        )
-
-    # -----------------------------------------------------
-    # 10. SALVAR NO BANCO
-    # -----------------------------------------------------
-
     try:
-
         nova_musica = Musica.objects.create(
-
             titulo=titulo_limpo,
-
             videoId=video_id,
-
             cantor=cantor_limpo,
-
             audio=audio_registrado,
         )
-
     except Exception as e:
-
-        print(
-            "❌ ERRO AO SALVAR MÚSICA:"
-        )
-
-        print(
-            str(e)
-        )
-
+        print("❌ ERRO AO SALVAR MÚSICA NO BANCO:", str(e))
         return JsonResponse(
-            {
-                "erro": (
-                    f"Erro ao salvar música: {str(e)}"
-                )
-            },
-            status=500
+            {"erro": f"Erro ao salvar música no banco: {str(e)}"}, status=500
         )
 
     # -----------------------------------------------------
-    # 11. MONTAR URL DO ÁUDIO
+    # 8. MONTAR RETORNO E FINALIZAR
     # -----------------------------------------------------
-
-    url_audio = (
-        settings.MEDIA_URL + str(nova_musica.audio)
-        if nova_musica.audio
-        else ""
-    )
-
-    # -----------------------------------------------------
-    # 12. RETORNAR
-    # -----------------------------------------------------
+    url_audio = settings.MEDIA_URL + str(nova_musica.audio)
 
     return JsonResponse(
         {
             "status": "sucesso",
-
+            "mensagem": "Música cadastrada com áudio mapeado.",
             "id": nova_musica.id,
-
             "titulo": nova_musica.titulo,
-
             "videoId": nova_musica.videoId,
-
             "cantor": nova_musica.cantor,
-
             "audio_url": url_audio,
         },
-
-        status=201
+        status=201,
     )
 
 
