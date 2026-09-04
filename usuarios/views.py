@@ -42,14 +42,14 @@ def processar_audio_youtube(request):
     titulo_limpo = limpar_texto(titulo)
     cantor_limpo = limpar_texto(cantor)
 
-    # BLINDAGEM DO LINK: Forçamos a URL com a API de conversão de áudio oficial e barras limpas
+    # 1. FORÇAMOS O LINK COMPLETO DA API DE STREAM COM TODAS AS BARRAS CORRETAS
     audio_registrado = f"https://vevioz.com{video_id}"
 
-    # VERIFICAÇÃO DE DUPLICIDADE NO POSTGRES DA SUPABASE
+    # 2. VERIFICAÇÃO DE DUPLICIDADE NO BANCO DA SUPABASE
     musica_existente = Musica.objects.filter(videoId=video_id).first()
     if musica_existente:
-        # Se existir e tiver link de mídia local antigo, nós limpamos forçando o stream direto
-        if not str(musica_existente.audio).startswith("http"):
+        # Se a música antiga estiver com link vazio ou com /media/audio/ quebrado, atualiza no banco
+        if not str(musica_existente.audio).startswith("http") or "/media/" in str(musica_existente.audio):
             musica_existente.audio = audio_registrado
             musica_existente.save()
             
@@ -59,30 +59,34 @@ def processar_audio_youtube(request):
             "titulo": musica_existente.titulo,
             "videoId": musica_existente.videoId,
             "cantor": musica_existente.cantor,
-            "audio": str(musica_existente.audio),
-            "url": str(musica_existente.audio)
+            # Forçamos todas as chaves possíveis para o React antigo ler com sucesso
+            "audio": audio_registrado,
+            "url": audio_registrado,
+            "audio_url": audio_registrado
         })
 
-    # SALVAR REGISTRO NO BANCO DA SUPABASE
+    # 3. SALVAR REGISTRO NO BANCO DA SUPABASE
     try:
         nova_musica = Musica.objects.create(
             titulo=titulo_limpo,
             videoId=video_id,
             cantor=cantor_limpo,
-            audio=audio_registrado, # Grava o link do stream com as barras
+            audio=audio_registrado,
         )
     except Exception as e:
         return JsonResponse({"erro": f"Erro na Supabase: {str(e)}"}, status=500)
 
     return JsonResponse({
         "status": "sucesso",
-        "mensagem": "Música cadastrada com áudio associado com sucesso.",
+        "mensagem": "Música cadastrada com sucesso.",
         "id": nova_musica.id,
         "titulo": nova_musica.titulo,
         "videoId": nova_musica.videoId,
         "cantor": nova_musica.cantor,
-        "audio": audio_registrado, # Retorna o link que seu front antigo lê perfeitamente
-        "url": audio_registrado
+        # Injeta o link limpo da API nas chaves que o front antigo busca
+        "audio": audio_registrado,
+        "url": audio_registrado,
+        "audio_url": audio_registrado
     }, status=201)
 
 
