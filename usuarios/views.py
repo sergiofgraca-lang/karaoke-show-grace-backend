@@ -5,13 +5,12 @@ import unicodedata
 import yt_dlp
 import requests
 from django.conf import settings
-from django.db.models import Count  # <--- ADICIONE ESTA LINHA PARA CORRIGIR O ERRO DA LINHA 286!
+from django.db.models import Count
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from .models import Musica
 
-
-# CONFIGURAÇÃO DIRETA VIA API REST DA SUPABASE (BLINDADO CONTRA ERRO 500)
+# CONFIGURAÇÃO DIRETA VIA API REST DA SUPABASE
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://supabase.co").rstrip('/')
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "sua-chave-anon-public-do-supabase")
 NOME_DO_BUCKET = "audio"
@@ -96,15 +95,12 @@ def processar_audio_youtube(request):
                     "Content-Type": "audio/mp3"
                 }
                 
-              # Envia os dados para o Supabase Storage via requisição POST
-                              # Envia os dados para o Supabase Storage via requisição POST
                 upload_req = requests.post(url_upload_supabase, headers=headers_supabase, data=resposta_stream.content, timeout=20)
                 
-                # SE O STATUS FOR MAIOR OU IGUAL A 300, SIGNIFICA QUE DEU ERRO (EX: 400, 404, 500)
+                # VALIDAÇÃO MATEMÁTICA CORRIGIDA: Se o status for de erro (300 ou maior), anula a URL
                 if upload_req.status_code >= 300:
                     print(f"⚠️ Erro no Storage HTTP: {upload_req.status_code}")
                     url_audio_final = ""
-
     except Exception as e:
         print(f"⚠️ Erro geral no processamento de mídia: {str(e)}")
         url_audio_final = ""
