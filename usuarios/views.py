@@ -30,6 +30,7 @@ if SUPABASE_URL and SUPABASE_SECRET_KEY:
             SUPABASE_URL,
             SUPABASE_SECRET_KEY
         )
+        print("✅ Supabase conectado.")
     except Exception as e:
         print("❌ Erro ao conectar ao Supabase:", e)
 
@@ -42,11 +43,11 @@ def limpar_texto(texto):
     """
     Remove espaços extras e caracteres problemáticos.
     """
+
     if texto is None:
         return ""
 
     texto = str(texto).strip()
-
     texto = re.sub(r"\s+", " ", texto)
 
     return texto
@@ -56,6 +57,7 @@ def normalizar_texto(texto):
     """
     Normaliza texto para facilitar buscas.
     """
+
     if not texto:
         return ""
 
@@ -75,12 +77,15 @@ def normalizar_texto(texto):
 
 def encontrar_audio(video_id):
     """
-    Procura um áudio local dentro de MEDIA_ROOT/audio.
+    Procura um áudio local dentro de:
 
-    Retorna o caminho relativo:
+        MEDIA_ROOT/audio/
+
+    Retorna:
+
         audio/nome.mp3
 
-    ou None se não encontrar.
+    ou None.
     """
 
     audio_dir = os.path.join(
@@ -102,12 +107,15 @@ def encontrar_audio(video_id):
 
     for arquivo in os.listdir(audio_dir):
 
-        nome, extensao = os.path.splitext(arquivo)
+        nome, extensao = os.path.splitext(
+            arquivo
+        )
 
         if extensao.lower() not in extensoes:
             continue
 
         if nome == video_id:
+
             return f"audio/{arquivo}"
 
     return None
@@ -121,6 +129,7 @@ def encontrar_audio(video_id):
 def testar_supabase(request):
 
     if request.method != "GET":
+
         return JsonResponse(
             {
                 "erro": "Método inválido. Use GET."
@@ -129,6 +138,7 @@ def testar_supabase(request):
         )
 
     if not supabase:
+
         return JsonResponse(
             {
                 "status": "erro",
@@ -153,6 +163,7 @@ def testar_supabase(request):
 def processar_audio_youtube(request):
 
     if request.method != "POST":
+
         return JsonResponse(
             {
                 "erro": "Método inválido. Use POST."
@@ -172,9 +183,18 @@ def processar_audio_youtube(request):
                 request.body
             )
 
-            video_id = dados.get("videoId")
-            titulo = dados.get("titulo")
-            cantor = dados.get("cantor", "")
+            video_id = dados.get(
+                "videoId"
+            )
+
+            titulo = dados.get(
+                "titulo"
+            )
+
+            cantor = dados.get(
+                "cantor",
+                ""
+            )
 
         else:
 
@@ -201,12 +221,24 @@ def processar_audio_youtube(request):
         )
 
     # --------------------------------------------------------
-    # VALIDAR
+    # LIMPAR DADOS
     # --------------------------------------------------------
 
-    video_id = limpar_texto(video_id)
-    titulo = limpar_texto(titulo)
-    cantor = limpar_texto(cantor)
+    video_id = limpar_texto(
+        video_id
+    )
+
+    titulo = limpar_texto(
+        titulo
+    )
+
+    cantor = limpar_texto(
+        cantor
+    )
+
+    # --------------------------------------------------------
+    # VALIDAR
+    # --------------------------------------------------------
 
     if not video_id:
 
@@ -245,10 +277,14 @@ def processar_audio_youtube(request):
             ).strip()
 
             # ------------------------------------------------
-            # LIMPAR URLs FALSAS DO VEVIOZ
+            # ELIMINAR URL FALSA DO VEVIOZ
             # ------------------------------------------------
 
             if "vevioz.com" in audio_existente.lower():
+
+                print(
+                    "🧹 Removendo URL falsa do Vevioz."
+                )
 
                 musica_existente.audio = ""
 
@@ -275,8 +311,10 @@ def processar_audio_youtube(request):
     # CRIAR NOVA MÚSICA
     #
     # IMPORTANTE:
-    # NÃO colocar URL falsa aqui.
+    # NÃO criar URL falsa.
+    #
     # O áudio começa vazio.
+    # Depois será associado o áudio REAL.
     # --------------------------------------------------------
 
     try:
@@ -301,7 +339,10 @@ def processar_audio_youtube(request):
 
         return JsonResponse(
             {
-                "erro": "Erro ao salvar música: " + str(e)
+                "erro": (
+                    "Erro ao salvar música: "
+                    + str(e)
+                )
             },
             status=500
         )
@@ -542,11 +583,15 @@ def listar_audios(request):
 
         arquivos = []
 
-        for arquivo in os.listdir(audio_dir):
+        for arquivo in os.listdir(
+            audio_dir
+        ):
 
-            if os.path.splitext(
+            extensao = os.path.splitext(
                 arquivo
-            )[1].lower() in extensoes:
+            )[1].lower()
+
+            if extensao in extensoes:
 
                 arquivos.append(
                     {
@@ -590,6 +635,10 @@ def associar_audio(request):
             status=405
         )
 
+    # --------------------------------------------------------
+    # RECEBER DADOS
+    # --------------------------------------------------------
+
     try:
 
         if request.content_type == "application/json":
@@ -625,8 +674,21 @@ def associar_audio(request):
             status=400
         )
 
-    video_id = limpar_texto(video_id)
-    audio = limpar_texto(audio)
+    # --------------------------------------------------------
+    # LIMPAR
+    # --------------------------------------------------------
+
+    video_id = limpar_texto(
+        video_id
+    )
+
+    audio = limpar_texto(
+        audio
+    )
+
+    # --------------------------------------------------------
+    # VALIDAR
+    # --------------------------------------------------------
 
     if not video_id:
 
@@ -647,7 +709,7 @@ def associar_audio(request):
         )
 
     # --------------------------------------------------------
-    # IMPEDIR URL FALSA
+    # IMPEDIR VEVIOZ
     # --------------------------------------------------------
 
     if "vevioz.com" in audio.lower():
@@ -661,6 +723,10 @@ def associar_audio(request):
             },
             status=400
         )
+
+    # --------------------------------------------------------
+    # LOCALIZAR MÚSICA
+    # --------------------------------------------------------
 
     try:
 
@@ -681,6 +747,11 @@ def associar_audio(request):
 
         musica.save(
             update_fields=["audio"]
+        )
+
+        print(
+            "✅ Áudio associado:",
+            audio
         )
 
         return JsonResponse(
@@ -722,7 +793,9 @@ def audio_da_musica(request, video_id):
             status=405
         )
 
-    video_id = limpar_texto(video_id)
+    video_id = limpar_texto(
+        video_id
+    )
 
     print(
         "🔎 Procurando áudio associado ao videoId:",
@@ -764,7 +837,7 @@ def audio_da_musica(request, video_id):
         )
 
     # --------------------------------------------------------
-    # PRIMEIRO: VERIFICAR ÁUDIO SALVO
+    # VERIFICAR ÁUDIO SALVO
     # --------------------------------------------------------
 
     if musica.audio:
@@ -774,7 +847,7 @@ def audio_da_musica(request, video_id):
         ).strip()
 
         # ----------------------------------------------------
-        # LIMPAR URL FALSA DO VEVIOZ
+        # URL FALSA DO VEVIOZ
         # ----------------------------------------------------
 
         if "vevioz.com" in audio.lower():
@@ -794,16 +867,17 @@ def audio_da_musica(request, video_id):
         # ----------------------------------------------------
         # URL ABSOLUTA
         #
-        # Supabase:
-        # https://xxxxx.supabase.co/storage/v1/object/public/...
+        # Exemplo Supabase:
+        #
+        # https://xxxxx.supabase.co/storage/...
         #
         # NÃO adicionar MEDIA_URL.
         # ----------------------------------------------------
 
-        elif audio.startswith(
-            "http://"
-        ) or audio.startswith(
-            "https://"
+        elif (
+            audio.startswith("http://")
+            or
+            audio.startswith("https://")
         ):
 
             print(
@@ -835,7 +909,9 @@ def audio_da_musica(request, video_id):
                     len("media/"):
                 ]
 
-            audio = audio.lstrip("/")
+            audio = audio.lstrip(
+                "/"
+            )
 
             url_audio = (
                 settings.MEDIA_URL
@@ -858,7 +934,7 @@ def audio_da_musica(request, video_id):
             )
 
     # --------------------------------------------------------
-    # SEGUNDO: PROCURAR ARQUIVO LOCAL
+    # PROCURAR ÁUDIO LOCAL
     # --------------------------------------------------------
 
     audio_local = encontrar_audio(
@@ -894,7 +970,7 @@ def audio_da_musica(request, video_id):
         )
 
     # --------------------------------------------------------
-    # NENHUM ÁUDIO
+    # NENHUM ÁUDIO REAL
     # --------------------------------------------------------
 
     print(
