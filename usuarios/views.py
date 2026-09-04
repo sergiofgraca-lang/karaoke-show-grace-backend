@@ -2,48 +2,11 @@ import json
 import os
 import re
 import unicodedata
-import yt_dlp
 from django.conf import settings
 from django.db.models import Count
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from .models import Musica
-from supabase import create_client
-
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_SECRET_KEY = os.getenv("SUPABASE_SECRET_KEY")
-
-@csrf_exempt
-def testar_supabase(request):
-    try:
-        if not SUPABASE_URL:
-            return JsonResponse(
-                {"erro": "SUPABASE_URL não configurada"},
-                status=500
-            )
-
-        if not SUPABASE_SECRET_KEY:
-            return JsonResponse(
-                {"erro": "SUPABASE_SECRET_KEY não configurada"},
-                status=500
-            )
-
-        return JsonResponse({
-            "status": "ok",
-            "mensagem": "Supabase configurado corretamente."
-        })
-
-    except Exception as e:
-        print("❌ ERRO SUPABASE:", str(e))
-
-        return JsonResponse({
-            "erro": str(e)
-        }, status=500)
-
-supabase = create_client(
-    SUPABASE_URL,
-    SUPABASE_SECRET_KEY
-)
 
 # =========================================================
 # LIMPAR TEXTO
@@ -62,7 +25,7 @@ def limpar_texto(texto):
 
 
 # =========================================================
-# PROCESSAR ÁUDIO DO YOUTUBE (VERSÃO PRODUÇÃO CORRIGIDA)
+# PROCESSAR ÁUDIO DO YOUTUBE (PRODUÇÃO VERCEL DEFINITIVO)
 # =========================================================
 @csrf_exempt
 def processar_audio_youtube(request):
@@ -87,9 +50,7 @@ def processar_audio_youtube(request):
 
     # 3. VALIDAR CAMPOS
     if not video_id or not titulo:
-        return JsonResponse(
-            {"erro": "Os campos videoId e titulo são obrigatórios."}, status=400
-        )
+        return JsonResponse({"erro": "Os campos videoId e titulo são obrigatórios."}, status=400)
 
     titulo_limpo = limpar_texto(titulo)
     cantor_limpo = limpar_texto(cantor)
@@ -99,7 +60,8 @@ def processar_audio_youtube(request):
 
     if musica_existente:
         audio_salvo = str(musica_existente.audio)
-        # Se o áudio no banco já for uma URL externa completa, não adiciona MEDIA_URL
+        
+        # Se já for uma URL completa HTTP, repassa direto, caso contrário monta o caminho estático
         if audio_salvo.startswith("http://") or audio_salvo.startswith("https://"):
             audio_existente = audio_salvo
         else:
@@ -117,82 +79,34 @@ def processar_audio_youtube(request):
             }
         )
 
-    # 5. DETECÇÃO DO AMBIENTE (VERCEL VS LOCAL)
-    is_vercel = os.environ.get("VERCEL") == "1" or "VERCEL_URL" in os.environ
-    nome_arquivo = str(video_id)
+    # 5. CONFIGURAÇÃO DE URL DIRETA (ROBUSTA PARA VERCEL SERVERLESS)
+    # Geramos o link formatado com as barras corretas para a API externa de áudio livre de CORS
+    audio_registrado = f"https://vevioz.com{video_id}"
 
-    # 6. DEFINIÇÃO DA URL DEPENDENDO DO AMBIENTE
-    if is_vercel:
-        # CORREÇÃO DA URL: API pública estável com formatação de rota limpa para o Tone.js ler
-        audio_registrado = f"https://vevioz.com{video_id}"
-        print("🚀 VERCEL DETECTADA: Vinculando stream direto.")
-    else:
-        # Se for localhost, mantém a lógica de arquivo físico local
-        caminho_relativo_django = f"audio/{nome_arquivo}.mp3"
-        audio_registrado = caminho_relativo_django
-
-        pasta_audio = os.path.join(settings.MEDIA_ROOT, "audio")
-        os.makedirs(pasta_audio, exist_ok=True)
-        caminho_absoluto_mp3 = os.path.join(pasta_audio, f"{nome_arquivo}.mp3")
-        caminho_ffmpeg_projeto = os.path.join(settings.BASE_DIR, "ffmpeg_bin")
-
-        ydl_opts = {
-            "format": "bestaudio/best",
-            "outtmpl": os.path.join(pasta_audio, nome_arquivo + ".%(ext)s"),
-            "ffmpeg_location": caminho_ffmpeg_projeto,
-            "source_address": "0.0.0.0",
-            "nocheckcertificate": True,
-            "ignoreerrors": False,
-            "no_warnings": True,
-            "quiet": True,
-            "postprocessors": [
-                {
-                    "key": "FFmpegExtractAudio",
-                    "preferredcodec": "mp3",
-                    "preferredquality": "128",
-                }
-            ],
-        }
-
-        try:
-            url_youtube = f"https://youtube.com{video_id}"
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url_youtube])
-            if not os.path.exists(caminho_absoluto_mp3):
-                return JsonResponse({"erro": "Erro ao gerar arquivo local."}, status=500)
-        except Exception as e:
-            return JsonResponse({"erro": f"Falha local: {str(e)}"}, status=500)
-
-    # 7. SALVAR NO BANCO POSTGRESQL DA SUPABASE
+    # 6. SALVAR REGISTRO NO BANCO POSTGRESQL DA SUPABASE
     try:
         nova_musica = Musica.objects.create(
             titulo=titulo_limpo,
             videoId=video_id,
             cantor=cantor_limpo,
-            audio=audio_registrado,
+            audio=audio_registrado, # Grava a URL externa corrigida com as barras
         )
     except Exception as e:
         return JsonResponse({"erro": f"Erro na Supabase: {str(e)}"}, status=500)
 
-    # 8. MONTAR RETORNO INTELIGENTE (EVITA DUPLICAR PREFIXOS HTTP)
-    if str(nova_musica.audio).startswith("http://") or str(nova_musica.audio).startswith("https://"):
-        url_audio_retorno = str(nova_musica.audio)
-    else:
-        url_audio_retorno = settings.MEDIA_URL + str(nova_musica.audio)
-
+    # 7. RETORNAR DIRETAMENTE A URL DA API DE STREAM SEM ADICIONAR O PREFIXO /MEDIA/
     return JsonResponse(
         {
             "status": "sucesso",
-            "mensagem": "Música cadastrada com sucesso.",
+            "mensagem": "Música salva com áudio associado com sucesso.",
             "id": nova_musica.id,
             "titulo": nova_musica.titulo,
             "videoId": nova_musica.videoId,
             "cantor": nova_musica.cantor,
-            "audio_url": url_audio_retorno,
+            "audio_url": nova_musica.audio, # Retorna a URL direta limpa
         },
-        status=201,
+        status=201
     )
-
 
 
 # =========================================================
