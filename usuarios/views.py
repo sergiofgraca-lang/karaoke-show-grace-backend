@@ -5,12 +5,12 @@ import unicodedata
 import yt_dlp
 import requests
 from django.conf import settings
-from django.db.models import Count
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
+from django.db.models import Count
 from .models import Musica
 
-# CONFIGURAÇÃO DIRETA VIA API REST DA SUPABASE
+# CONFIGURAÇÃO DIRETA VIA API REST DA SUPABASE (Bucket público 'audio')
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://supabase.co").rstrip('/')
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "sua-chave-anon-public-do-supabase")
 NOME_DO_BUCKET = "audio"
@@ -49,13 +49,16 @@ def processar_audio_youtube(request):
     titulo_limpo = limpar_texto(titulo)
     cantor_limpo = limpar_texto(cantor)
 
-    # 1. VERIFICAÇÃO DE DUPLICIDADE
+    # URL pública definitiva que o Supabase vai gerar para este vídeo
+    nome_arquivo = f"{video_id}.mp3"
+    url_supabase_obrigatoria = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{nome_arquivo}"
+
+    # 1. VERIFICAÇÃO DE DUPLICIDADE (CORREÇÃO TOTAL CONTRA CACHE DO NEON)
     musica_existente = Musica.objects.filter(videoId=video_id).first()
     if musica_existente:
-        url_retorno = str(musica_existente.audio)
-        if "vevioz" in url_retorno or not url_retorno.startswith("http"):
-            url_retorno = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{video_id}.mp3"
-            musica_existente.audio = url_retorno
+        # Se o registro antigo no Neon estiver com link do Vevioz ou vazio, nós limpamos e forçamos a URL do Supabase
+        if "vevioz" in str(musica_existente.audio) or not str(musica_existente.audio).startswith("http"):
+            musica_existente.audio = url_supabase_obrigatoria
             musica_existente.save()
 
         return JsonResponse({
@@ -64,15 +67,14 @@ def processar_audio_youtube(request):
             "titulo": musica_existente.titulo,
             "videoId": musica_existente.videoId,
             "cantor": musica_existente.cantor,
-            "audio": url_retorno,
-            "url": url_retorno,
-            "audio_url": url_retorno
+            # Forçamos o retorno da URL certa para engolir o cache do front antigo
+            "audio": url_supabase_obrigatoria,
+            "url": url_supabase_obrigatoria,
+            "audio_url": url_supabase_obrigatoria
         })
 
     # 2. CAPTURAR FLUXO DE ÁUDIO VIA YT-DLP E ENVIAR PARA O SUPABASE STORAGE
-    nome_arquivo = f"{video_id}.mp3"
-    url_audio_final = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{nome_arquivo}"
-    
+    url_audio_final = url_supabase_obrigatoria
     ydl_opts = {
         'format': 'bestaudio/best',
         'quiet': True,
@@ -87,8 +89,10 @@ def processar_audio_youtube(request):
             stream_url = info.get('url', '')
             
             if stream_url:
+                # Baixa o fluxo binário do áudio direto na memória RAM da Vercel
                 resposta_stream = requests.get(stream_url, stream=True, timeout=15)
                 
+                # Executa o Upload via API REST oficial do Supabase Storage
                 url_upload_supabase = f"{SUPABASE_URL}/storage/v1/object/{NOME_DO_BUCKET}/{nome_arquivo}"
                 headers_supabase = {
                     "Authorization": f"Bearer {SUPABASE_KEY}",
@@ -97,7 +101,7 @@ def processar_audio_youtube(request):
                 
                 upload_req = requests.post(url_upload_supabase, headers=headers_supabase, data=resposta_stream.content, timeout=20)
                 
-                # VALIDAÇÃO MATEMÁTICA CORRIGIDA: Se o status for de erro (300 ou maior), anula a URL
+                # Se o upload falhar no storage por qualquer motivo, invalida para rodar o fallback
                 if upload_req.status_code >= 300:
                     print(f"⚠️ Erro no Storage HTTP: {upload_req.status_code}")
                     url_audio_final = ""
@@ -105,10 +109,11 @@ def processar_audio_youtube(request):
         print(f"⚠️ Erro geral no processamento de mídia: {str(e)}")
         url_audio_final = ""
 
+    # Fallback de emergência (Caso o Supabase fique fora do ar)
     if not url_audio_final:
         url_audio_final = f"https://vevioz.com{video_id}"
 
-    # 3. GRAVAR REGISTRO NO BANCO POSTGRESQL DA SUPABASE
+    # 3. GRAVAR REGISTRO INÉDITO NO BANCO DE DADOS NEON
     try:
         nova_musica = Musica.objects.create(
             titulo=titulo_limpo,
@@ -117,7 +122,7 @@ def processar_audio_youtube(request):
             audio=url_audio_final,
         )
     except Exception as e:
-        return JsonResponse({"erro": f"Erro na Supabase: {str(e)}"}, status=500)
+        return JsonResponse({"erro": f"Erro no Neon: {str(e)}"}, status=500)
 
     return JsonResponse({
         "status": "sucesso",
@@ -129,6 +134,7 @@ def processar_audio_youtube(request):
         "url": url_audio_final,
         "audio_url": url_audio_final
     }, status=201)
+
 
 
 
