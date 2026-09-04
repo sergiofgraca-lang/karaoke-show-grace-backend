@@ -42,14 +42,14 @@ def processar_audio_youtube(request):
     titulo_limpo = limpar_texto(titulo)
     cantor_limpo = limpar_texto(cantor)
 
-    # 1. GERAMOS O LINK DE STREAM REAL COMPLETO COM AS BARRAS DA API CORRETA
+    # 1. LINK DE PRODUÇÃO PERFEITO COM PROTOCOLO, SUBDOMÍNIO E AS BARRAS DA API
     audio_registrado = f"https://vevioz.com{video_id}"
 
     # 2. VERIFICAÇÃO DE DUPLICIDADE NO BANCO DA SUPABASE
     musica_existente = Musica.objects.filter(videoId=video_id).first()
     if musica_existente:
-        # Forçamos a atualização do link no banco se ele for o /media/ antigo ou quebrado
-        if not str(musica_existente.audio).startswith("http") or "/media/" in str(musica_existente.audio) or "api/button" not in str(musica_existente.audio):
+        # Se a música antiga no banco tiver o link quebrado sem barras, nós corrigimos forçado
+        if "api/button" not in str(musica_existente.audio) or "/media/" in str(musica_existente.audio):
             musica_existente.audio = audio_registrado
             musica_existente.save()
             
@@ -59,13 +59,13 @@ def processar_audio_youtube(request):
             "titulo": musica_existente.titulo,
             "videoId": musica_existente.videoId,
             "cantor": musica_existente.cantor,
-            # Injetamos o link pronto em todas as chaves possíveis que o front antigo possa tentar ler
+            # Injetamos o link limpo em todas as chaves possíveis que o front antigo possa tentar ler
             "audio": audio_registrado,
             "url": audio_registrado,
             "audio_url": audio_registrado
         })
 
-    # 3. SALVAR REGISTRO INÉDITO NO POSTGRES DA SUPABASE
+    # 3. SALVAR REGISTRO NO BANCO POSTGRESQL DA SUPABASE
     try:
         nova_musica = Musica.objects.create(
             titulo=titulo_limpo,
