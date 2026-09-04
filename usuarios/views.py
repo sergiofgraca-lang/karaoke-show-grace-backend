@@ -5,16 +5,16 @@ import unicodedata
 import yt_dlp
 import requests
 from django.conf import settings
+from django.db.models import Count  # <--- ADICIONE ESTA LINHA PARA CORRIGIR O ERRO DA LINHA 286!
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from supabase import create_client, Client
 from .models import Musica
 
-# CONFIGURAÇÃO SUPABASE STORAGE
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://supabase.co")
+
+# CONFIGURAÇÃO DIRETA VIA API REST DA SUPABASE (BLINDADO CONTRA ERRO 500)
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://supabase.co").rstrip('/')
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "sua-chave-anon-public-do-supabase")
-supabase_client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-NOME_DO_BUCKET = "audio" # Crie um bucket chamado 'audio' no painel do seu Supabase Storage
+NOME_DO_BUCKET = "audio"
 
 def limpar_texto(texto):
     if not texto:
@@ -53,18 +53,26 @@ def processar_audio_youtube(request):
     # 1. VERIFICAÇÃO DE DUPLICIDADE
     musica_existente = Musica.objects.filter(videoId=video_id).first()
     if musica_existente:
+        url_retorno = str(musica_existente.audio)
+        if "vevioz" in url_retorno or not url_retorno.startswith("http"):
+            url_retorno = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{video_id}.mp3"
+            musica_existente.audio = url_retorno
+            musica_existente.save()
+
         return JsonResponse({
             "status": "sucesso",
             "id": musica_existente.id,
             "titulo": musica_existente.titulo,
             "videoId": musica_existente.videoId,
             "cantor": musica_existente.cantor,
-            "audio_url": str(musica_existente.audio)
+            "audio": url_retorno,
+            "url": url_retorno,
+            "audio_url": url_retorno
         })
 
-    # 2. CAPTURAR FLUXO DE ÁUDIO REAL VIA YT-DLP (SEM SALVAR EM DISCO NA VERCEL)
-    url_audio_final = ""
-    nome_arquivo_supabase = f"{video_id}.mp3"
+    # 2. CAPTURAR FLUXO DE ÁUDIO VIA YT-DLP E ENVIAR PARA O SUPABASE STORAGE
+    nome_arquivo = f"{video_id}.mp3"
+    url_audio_final = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{nome_arquivo}"
     
     ydl_opts = {
         'format': 'bestaudio/best',
@@ -80,28 +88,31 @@ def processar_audio_youtube(request):
             stream_url = info.get('url', '')
             
             if stream_url:
-                # Baixamos o pedaço do fluxo de áudio diretamente na memória RAM da Vercel
-                resposta_stream = requests.get(stream_url, stream=True, timeout=10)
-                conteudo_audio = resposta_stream.content
+                resposta_stream = requests.get(stream_url, stream=True, timeout=15)
                 
-                # Enviamos o arquivo binário bruto diretamente para o Supabase Storage (Bucket 'audio')
-                supabase_client.storage.from_(NOME_DO_BUCKET).upload(
-                    path=nome_arquivo_supabase,
-                    file=conteudo_audio,
-                    file_options={"content-type": "audio/mp3"}
-                )
+                url_upload_supabase = f"{SUPABASE_URL}/storage/v1/object/{NOME_DO_BUCKET}/{nome_arquivo}"
+                headers_supabase = {
+                    "Authorization": f"Bearer {SUPABASE_KEY}",
+                    "Content-Type": "audio/mp3"
+                }
                 
-                # Montamos a URL pública permanente gerada pelo próprio Supabase
-                url_audio_final = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{nome_arquivo_supabase}"
+              # Envia os dados para o Supabase Storage via requisição POST
+                              # Envia os dados para o Supabase Storage via requisição POST
+                upload_req = requests.post(url_upload_supabase, headers=headers_supabase, data=resposta_stream.content, timeout=20)
                 
-    except Exception as e:
-        print(f"⚠️ Falha no upload para o Supabase Storage: {str(e)}")
+                # SE O STATUS FOR MAIOR OU IGUAL A 300, SIGNIFICA QUE DEU ERRO (EX: 400, 404, 500)
+                if upload_req.status_code >= 300:
+                    print(f"⚠️ Erro no Storage HTTP: {upload_req.status_code}")
+                    url_audio_final = ""
 
-    # Fallback de segurança se o Storage falhar
+    except Exception as e:
+        print(f"⚠️ Erro geral no processamento de mídia: {str(e)}")
+        url_audio_final = ""
+
     if not url_audio_final:
         url_audio_final = f"https://vevioz.com{video_id}"
 
-    # 3. SALVAR REGISTRO NO BANCO POSTGRESQL DA SUPABASE
+    # 3. GRAVAR REGISTRO NO BANCO POSTGRESQL DA SUPABASE
     try:
         nova_musica = Musica.objects.create(
             titulo=titulo_limpo,
@@ -118,8 +129,13 @@ def processar_audio_youtube(request):
         "titulo": nova_musica.titulo,
         "videoId": nova_musica.videoId,
         "cantor": nova_musica.cantor,
-        "audio_url": nova_musica.audio,
+        "audio": url_audio_final,
+        "url": url_audio_final,
+        "audio_url": url_audio_final
     }, status=201)
+
+
+
 
 
 
