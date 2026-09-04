@@ -42,14 +42,14 @@ def processar_audio_youtube(request):
     titulo_limpo = limpar_texto(titulo)
     cantor_limpo = limpar_texto(cantor)
 
-    # 1. FORÇAMOS O LINK COMPLETO DA API DE STREAM COM TODAS AS BARRAS CORRETAS
+    # 1. GERAMOS O LINK DE STREAM REAL COMPLETO COM AS BARRAS DA API CORRETA
     audio_registrado = f"https://vevioz.com{video_id}"
 
     # 2. VERIFICAÇÃO DE DUPLICIDADE NO BANCO DA SUPABASE
     musica_existente = Musica.objects.filter(videoId=video_id).first()
     if musica_existente:
-        # Se a música antiga estiver com link vazio ou com /media/audio/ quebrado, atualiza no banco
-        if not str(musica_existente.audio).startswith("http") or "/media/" in str(musica_existente.audio):
+        # Forçamos a atualização do link no banco se ele for o /media/ antigo ou quebrado
+        if not str(musica_existente.audio).startswith("http") or "/media/" in str(musica_existente.audio) or "api/button" not in str(musica_existente.audio):
             musica_existente.audio = audio_registrado
             musica_existente.save()
             
@@ -59,13 +59,13 @@ def processar_audio_youtube(request):
             "titulo": musica_existente.titulo,
             "videoId": musica_existente.videoId,
             "cantor": musica_existente.cantor,
-            # Forçamos todas as chaves possíveis para o React antigo ler com sucesso
+            # Injetamos o link pronto em todas as chaves possíveis que o front antigo possa tentar ler
             "audio": audio_registrado,
             "url": audio_registrado,
             "audio_url": audio_registrado
         })
 
-    # 3. SALVAR REGISTRO NO BANCO DA SUPABASE
+    # 3. SALVAR REGISTRO INÉDITO NO POSTGRES DA SUPABASE
     try:
         nova_musica = Musica.objects.create(
             titulo=titulo_limpo,
@@ -83,11 +83,12 @@ def processar_audio_youtube(request):
         "titulo": nova_musica.titulo,
         "videoId": nova_musica.videoId,
         "cantor": nova_musica.cantor,
-        # Injeta o link limpo da API nas chaves que o front antigo busca
+        # Devolvemos a URL limpa de stream nas propriedades mapeadas
         "audio": audio_registrado,
         "url": audio_registrado,
         "audio_url": audio_registrado
     }, status=201)
+
 
 
 # ============================================================
