@@ -1,23 +1,37 @@
 from django.urls import path
+
 from .views import (
-    processar_audio_youtube,  # Sua view unificada e rápida
+    processar_audio_youtube,
     listar_musicas,
     deletar_musica,
     ranking,
     listar_audios,
     associar_audio,
+    audio_da_musica,
 )
 
 urlpatterns = [
+    # Salvar/processar uma música
     path("salvar/", processar_audio_youtube),
+
+    # Processar explicitamente o áudio do YouTube
+    path("processar-audio/", processar_audio_youtube),
+
+    # Listagem
     path("listar/", listar_musicas),
+
+    # Exclusão
     path("deletar/<int:id>/", deletar_musica),
+
+    # Ranking
     path("ranking/", ranking),
+
+    # Áudios disponíveis
     path("audios/", listar_audios),
+
+    # Associar áudio manualmente
     path("associar-audio/", associar_audio),
-    
-    # 🎯 ESPELHAMENTO DE PRODUÇÃO:
-    # O seu front antigo procura por "/api/audio/VIDEO_ID/". Forçamos o Django
-    # a responder essa rota entregando a URL corrigida com as barras!
-    path("audio/<str:video_id>/", processar_audio_youtube),
+
+    # Consultar o áudio real de uma música
+    path("audio/<str:video_id>/", audio_da_musica),
 ]
