@@ -2,14 +2,6 @@
   "version": 2,
   "routes": [
     {
-      "src": "/api/audio/(?<video_id>[^/]+)/",
-      "dest": "https://vevioz.com"
-    },
-    {
-      "src": "/kxRMboBv_4U",
-      "dest": "https://vevioz.com"
-    },
-    {
       "src": "/(.*)",
       "headers": {
         "Access-Control-Allow-Origin": "*",
