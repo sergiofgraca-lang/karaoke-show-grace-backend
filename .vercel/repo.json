@@ -1,0 +1,11 @@
+{
+  "remoteName": "origin",
+  "projects": [
+    {
+      "id": "prj_bfKnxqgx5u3TAYYV5GKqf6GyfUML",
+      "name": "karaoke-show-grace-backend",
+      "directory": ".",
+      "orgId": "team_3TpCLMqNxmMtr8NMd6arzxGS"
+    }
+  ]
+}
