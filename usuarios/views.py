@@ -8,7 +8,7 @@ import requests
 import yt_dlp
 
 from django.conf import settings
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.db.models import Count
 
@@ -102,6 +102,88 @@ def url_upload_supabase(video_id):
         f"{NOME_DO_BUCKET}/"
         f"{video_id}.mp3"
     )
+
+def gerar_url_assinada_supabase(video_id, segundos=3600):
+
+    if not supabase_configurado():
+        print("❌ Supabase não configurado.")
+        return None
+
+    caminho = f"{video_id}.mp3"
+
+    url = (
+        f"{SUPABASE_URL}"
+        f"/storage/v1/object/sign/"
+        f"{NOME_DO_BUCKET}/"
+        f"{caminho}"
+    )
+
+    headers = {
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "apikey": SUPABASE_KEY,
+        "Content-Type": "application/json",
+    }
+
+    dados = {
+        "expiresIn": segundos
+    }
+
+    try:
+
+        resposta = requests.post(
+            url,
+            headers=headers,
+            json=dados,
+            timeout=15
+        )
+
+        print(
+            "🔐 Supabase assinatura HTTP:",
+            resposta.status_code
+        )
+
+        if resposta.status_code >= 300:
+
+            print(
+                "❌ Erro ao gerar URL assinada:",
+                resposta.text
+            )
+
+            return None
+
+        resultado = resposta.json()
+
+        signed_url = resultado.get(
+            "signedURL"
+        )
+
+        if not signed_url:
+            print(
+                "❌ Supabase não retornou signedURL."
+            )
+            return None
+
+        # A API pode retornar apenas o caminho relativo.
+        if signed_url.startswith("/"):
+            signed_url = (
+                SUPABASE_URL
+                + signed_url
+            )
+
+        print(
+            "✅ URL assinada gerada com sucesso."
+        )
+
+        return signed_url
+
+    except Exception as e:
+
+        print(
+            "❌ Erro ao gerar URL assinada:",
+            str(e)
+        )
+
+        return None
 
 
 def supabase_configurado():
@@ -1426,6 +1508,86 @@ def encontrar_audio(video_id):
 # ============================================================
 # BUSCAR ÁUDIO DE UMA MÚSICA
 # ============================================================
+def servir_audio_supabase(request, video_id):
+    """
+    Entrega o MP3 privado do Supabase através do Django.
+    Evita que o navegador acesse diretamente o Supabase.
+    """
+
+    if request.method != "GET":
+        return JsonResponse(
+            {"erro": "Método não permitido."},
+            status=405
+        )
+
+    if not video_id:
+        return JsonResponse(
+            {"erro": "videoId não informado."},
+            status=400
+        )
+
+    print("🎧 Servindo áudio pelo Django:", video_id)
+
+    # Gera uma URL temporária para o arquivo privado
+    signed_url = gerar_url_assinada_supabase(
+        video_id,
+        segundos=3600
+    )
+
+    if not signed_url:
+        print("❌ Não foi possível gerar URL do áudio.")
+        return JsonResponse(
+            {"erro": "Áudio não encontrado."},
+            status=404
+        )
+
+    try:
+        resposta = requests.get(
+            signed_url,
+            timeout=30
+        )
+
+        print(
+            "📥 Supabase respondeu:",
+            resposta.status_code,
+            "Tamanho:",
+            len(resposta.content)
+        )
+
+        if resposta.status_code != 200:
+            print(
+                "❌ Erro ao baixar áudio do Supabase:",
+                resposta.text[:500]
+            )
+
+            return JsonResponse(
+                {"erro": "Não foi possível obter o áudio."},
+                status=404
+            )
+
+        response = HttpResponse(
+            resposta.content,
+            content_type="audio/mpeg"
+        )
+
+        response["Content-Length"] = str(
+            len(resposta.content)
+        )
+
+        response["Cache-Control"] = "no-cache"
+
+        return response
+
+    except Exception as e:
+        print(
+            "❌ Erro servindo áudio:",
+            str(e)
+        )
+
+        return JsonResponse(
+            {"erro": "Erro interno ao carregar áudio."},
+            status=500
+        )
 
 def audio_da_musica(
     request,
@@ -1573,12 +1735,20 @@ def audio_da_musica(
                 audio
             ):
 
-                if audio_supabase_existe(
-                    video_id
-                ):
+                print(
+                    "🔐 Gerando URL assinada do Supabase..."
+                )
+
+                audio_assinado = (
+                    gerar_url_assinada_supabase(
+                        video_id
+                    )
+                )
+
+                if audio_assinado:
 
                     print(
-                        "✅ Arquivo confirmado no Supabase."
+                        "✅ URL assinada pronta para o frontend."
                     )
 
                     return JsonResponse(
@@ -1593,27 +1763,43 @@ def audio_da_musica(
                                 musica.videoId
                             ),
 
-                            "audio": audio,
+                            "audio": audio_assinado,
 
-                            "url": audio,
+                            "url": audio_assinado,
 
-                            "audio_url": audio
+                            "audio_url": audio_assinado
                         }
                     )
 
                 print(
-                    "⚠️ URL existe no Neon, "
-                    "mas arquivo não foi encontrado no Supabase."
+                    "⚠️ Não foi possível gerar "
+                    "a URL assinada do Supabase."
                 )
 
-                musica.audio = ""
+                return JsonResponse(
+                    {
+                        "status": "sem_audio",
 
-                musica.save(
-                    update_fields=[
-                        "audio"
-                    ]
+                        "erro": (
+                            "O áudio existe no cadastro, "
+                            "mas não foi possível gerar "
+                            "a URL temporária."
+                        ),
+
+                        "titulo": (
+                            musica.titulo
+                        ),
+
+                        "videoId": video_id,
+
+                        "audio": "",
+
+                        "url": "",
+
+                        "audio_url": ""
+                    },
+                    status=404
                 )
-
             else:
 
                 # ------------------------------------------------
@@ -1789,4 +1975,6 @@ def audio_da_musica(
         },
         status=404
     )
+
+    
 

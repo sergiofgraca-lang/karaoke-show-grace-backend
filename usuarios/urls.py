@@ -8,6 +8,7 @@ from .views import (
     listar_audios,
     associar_audio,
     audio_da_musica,
+    servir_audio_supabase,
 )
 
 urlpatterns = [
@@ -34,4 +35,9 @@ urlpatterns = [
 
     # Consultar o áudio real de uma música
     path("audio/<str:video_id>/", audio_da_musica),
+
+    path(
+    "audio-arquivo/<str:video_id>/",
+    servir_audio_supabase
+),
 ]
