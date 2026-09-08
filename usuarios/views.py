@@ -154,18 +154,51 @@ def gerar_url_assinada_supabase(video_id, segundos=3600):
 
 def audio_supabase_existe(video_id):
     """
-    Verifica via requisição HTTP rápida se o arquivo já está disponível no Storage públicos.
-    Resolve o erro da linha 896.
+    Verifica se o MP3 existe no bucket privado do Supabase.
+    Gera uma URL assinada temporária e testa o arquivo.
     """
+
     if not video_id:
         return False
-    # Constrói o link direto usando as variáveis de escopo já definidas no arquivo
-    url_publica = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{video_id}.mp3"
+
     try:
-        # Faz um 'HEAD' que apenas checa a existência do arquivo sem baixá-lo (super rápido)
-        resposta = requests.head(url_publica, timeout=5)
-        return resposta.status_code == 200
-    except Exception:
+        signed_url = gerar_url_assinada_supabase(
+            video_id,
+            segundos=60
+        )
+
+        if not signed_url:
+            print(
+                "❌ Não foi possível gerar URL assinada para verificação."
+            )
+            return False
+
+        print(
+            "🔎 Testando arquivo através da URL assinada..."
+        )
+
+        resposta = requests.get(
+            signed_url,
+            headers={
+                "Range": "bytes=0-0"
+            },
+            timeout=10
+        )
+
+        print(
+            "🔎 Verificação pela URL assinada:",
+            resposta.status_code
+        )
+
+        return resposta.status_code in (200, 206)
+
+    except Exception as e:
+
+        print(
+            "❌ Erro verificando áudio no Supabase:",
+            str(e)
+        )
+
         return False
 
 # =========================================================================
@@ -1333,24 +1366,18 @@ def associar_audio(request):
     # VALIDAR VIDEO ID
     # --------------------------------------------------------
 
-    video_id_validado = (
-        validar_video_id(
-            video_id
-        )
+    if not validar_video_id(
+    video_id
+):
+
+     return JsonResponse(
+        {
+            "erro": (
+                "videoId inválido."
+            )
+        },
+        status=400
     )
-
-    if not video_id_validado:
-
-        return JsonResponse(
-            {
-                "erro": (
-                    "videoId inválido."
-                )
-            },
-            status=400
-        )
-
-    video_id = video_id_validado
 
     # --------------------------------------------------------
     # VALIDAR ÁUDIO
@@ -1640,19 +1667,17 @@ def audio_da_musica(
     # VALIDAR VIDEO ID
     # --------------------------------------------------------
 
-    video_id = validar_video_id(
-        video_id
-    )
+    
 
-    if not video_id:
+    if not validar_video_id(
+    video_id
+):
 
-        return JsonResponse(
-            {
-                "erro": (
-                    "videoId inválido."
-                )
-            },
-            status=400
+       return JsonResponse(
+        {
+            "erro": "videoId inválido."
+        },
+        status=400
         )
 
     print(
