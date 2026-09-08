@@ -6,7 +6,7 @@ import yt_dlp
 import requests
 from django.conf import settings
 from django.db.models import Count
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from .models import Musica
 
@@ -58,6 +58,100 @@ def validar_video_id(video_id):
     return bool(padrao.match(str(video_id)))
 
 
+def supabase_configurado():
+    if not SUPABASE_URL:
+        return False
+
+    if not SUPABASE_KEY:
+        return False
+
+    return True
+
+
+def gerar_url_assinada_supabase(video_id, segundos=3600):
+
+
+
+
+    if not supabase_configurado():
+        print("❌ Supabase não configurado.")
+        return None
+
+    caminho = f"{video_id}.mp3"
+
+    url = (
+    f"{SUPABASE_URL}"
+    f"/storage/v1/object/sign/"
+    f"{NOME_DO_BUCKET}/"
+    f"{caminho}"
+)
+
+    headers = {
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "apikey": SUPABASE_KEY,
+        "Content-Type": "application/json",
+    }
+
+    dados = {
+        "expiresIn": segundos
+    }
+
+    try:
+        resposta = requests.post(
+            url,
+            headers=headers,
+            json=dados,
+            timeout=15
+        )
+
+        print(
+            "🔐 Supabase assinatura HTTP:",
+            resposta.status_code
+        )
+
+        if resposta.status_code >= 300:
+            print(
+                "❌ Erro ao gerar URL assinada:",
+                resposta.text
+            )
+            return None
+
+        resultado = resposta.json()
+
+        signed_url = resultado.get("signedURL")
+
+        if not signed_url:
+            print(
+                "❌ Supabase não retornou signedURL."
+            )
+            return None
+
+        if signed_url.startswith("/object/"):
+            signed_url = (
+                SUPABASE_URL
+                + "/storage/v1"
+                + signed_url
+            )
+        elif signed_url.startswith("/"):
+            signed_url = (
+                SUPABASE_URL
+                + signed_url
+            )
+
+        print(
+            "✅ URL assinada gerada com sucesso."
+        )
+
+        return signed_url
+
+    except Exception as e:
+        print(
+            "❌ Erro ao gerar URL assinada:",
+            str(e)
+        )
+        return None
+
+
 def audio_supabase_existe(video_id):
     """
     Verifica via requisição HTTP rápida se o arquivo já está disponível no Storage públicos.
@@ -76,124 +170,775 @@ def audio_supabase_existe(video_id):
 
 # =========================================================================
 
+
 @csrf_exempt
 def processar_audio_youtube(request, video_id=None):
-    # 1. Permite tanto POST (para buscas novas) quanto GET (para carregar da playlist)
+    """
+    Baixa o áudio do YouTube, converte para MP3 com FFmpeg,
+    envia para o Supabase Storage privado e só então salva
+    a música no banco de dados.
+
+    Fluxo:
+
+    YouTube
+       ↓
+    yt-dlp
+       ↓
+    arquivo temporário
+       ↓
+    FFmpeg → MP3
+       ↓
+    Supabase / audios / videoId.mp3
+       ↓
+    Neon / Musica
+    """
+
+    # ============================================================
+    # 1. VALIDAR MÉTODO
+    # ============================================================
+
     if request.method not in ["POST", "GET"]:
-        return JsonResponse({"erro": "Método inválido. Use POST ou GET."}, status=405)
 
-    # 2. Se o video_id não veio por parâmetro na URL, tenta capturar do corpo da requisição (POST)
+        return JsonResponse(
+            {
+                "erro": (
+                    "Método inválido. "
+                    "Use POST ou GET."
+                )
+            },
+            status=405
+        )
+
+    # ============================================================
+    # 2. RECEBER DADOS
+    # ============================================================
+
+    titulo = "Karaoke"
+    cantor = ""
+
     if not video_id:
-        if request.content_type == "application/json":
+
+        if (
+            request.content_type
+            and
+            request.content_type.startswith(
+                "application/json"
+            )
+        ):
+
             try:
-                dados = json.loads(request.body)
-                video_id = dados.get("videoId")
-                titulo = dados.get("titulo")
-                cantor = dados.get("cantor", "")
+
+                dados = json.loads(
+                    request.body
+                )
+
+                video_id = dados.get(
+                    "videoId"
+                )
+
+                titulo = dados.get(
+                    "titulo",
+                    "Karaoke"
+                )
+
+                cantor = dados.get(
+                    "cantor",
+                    ""
+                )
+
             except json.JSONDecodeError:
-                return JsonResponse({"erro": "JSON inválido."}, status=400)
+
+                return JsonResponse(
+                    {
+                        "erro": "JSON inválido."
+                    },
+                    status=400
+                )
+
         else:
-            video_id = request.POST.get("videoId")
-            titulo = request.POST.get("titulo")
-            cantor = request.POST.get("cantor", "")
+
+            video_id = request.POST.get(
+                "videoId"
+            )
+
+            titulo = request.POST.get(
+                "titulo",
+                "Karaoke"
+            )
+
+            cantor = request.POST.get(
+                "cantor",
+                ""
+            )
+
     else:
-        # Se veio via GET da playlist, capturamos os dados textuais complementares opcionais
-        titulo = request.GET.get("titulo", "Karaoke")
-        cantor = request.GET.get("cantor", "")
 
-    if not video_id:
-        return JsonResponse({"erro": "O campo videoId é obrigatório."}, status=400)
+        titulo = request.GET.get(
+            "titulo",
+            "Karaoke"
+        )
 
-    # ... O restante do código de upload pro Supabase Storage e gravação no Neon continua igual embaixo ...
+        cantor = request.GET.get(
+            "cantor",
+            ""
+        )
 
+    # ============================================================
+    # 3. LIMPAR VIDEO ID
+    # ============================================================
 
-    titulo_limpo = limpar_texto(titulo)
-    cantor_limpo = limpar_texto(cantor)
+    video_id = str(
+        video_id or ""
+    ).strip()
 
-    # URL permanente que este arquivo receberá no seu Supabase Storage
-    nome_arquivo = f"{video_id}.mp3"
-    url_supabase_obrigatoria = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{nome_arquivo}"
+    # ============================================================
+    # 4. VALIDAR VIDEO ID
+    # ============================================================
 
-    # 1. VERIFICAÇÃO DE DUPLICIDADE (IGNORA LINKS QUEBRADOS ANTIGOS)
-    musica_existente = Musica.objects.filter(videoId=video_id).first()
-    if musica_existente:
-        # Se o link guardado no Neon for do vevioz ou antigo local, atualiza para o Supabase
-        if "vevioz" in str(musica_existente.audio) or not str(musica_existente.audio).startswith("http"):
-            musica_existente.audio = url_supabase_obrigatoria
-            musica_existente.save()
+    if not validar_video_id(
+        video_id
+    ):
 
-        return JsonResponse({
-            "status": "sucesso",
-            "id": musica_existente.id,
-            "titulo": musica_existente.titulo,
-            "videoId": musica_existente.videoId,
-            "cantor": musica_existente.cantor,
-            "audio": url_supabase_obrigatoria,
-            "url": url_supabase_obrigatoria,
-            "audio_url": url_supabase_obrigatoria
-        })
+        return JsonResponse(
+            {
+                "erro": (
+                    "ID do vídeo inválido "
+                    "ou não encontrado."
+                )
+            },
+            status=400
+        )
 
-    # 2. SE FOR UMA MÚSICA INÉDITA, BAIXA EM MEMÓRIA E ENVIA PRO BUCKET
-    url_audio_final = url_supabase_obrigatoria
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'quiet': True,
-        'no_warnings': True,
-        'skip_download': True,
+    print(
+        "🎬 Processando áudio do YouTube:",
+        video_id
+    )
+
+    # ============================================================
+    # 5. LIMPAR TEXTO
+    # ============================================================
+
+    titulo_limpo = limpar_texto(
+        titulo
+    )
+
+    cantor_limpo = limpar_texto(
+        cantor
+    )
+
+    # ============================================================
+    # 6. VALIDAR SUPABASE
+    # ============================================================
+
+    if not supabase_configurado():
+
+        print(
+            "❌ Supabase não está configurado."
+        )
+
+        return JsonResponse(
+            {
+                "erro": (
+                    "Supabase não está configurado."
+                )
+            },
+            status=500
+        )
+
+    # ============================================================
+    # 7. NOME DO ARQUIVO
+    # ============================================================
+
+    nome_arquivo = (
+        f"{video_id}.mp3"
+    )
+
+    caminho_storage = (
+        f"{NOME_DO_BUCKET}/{nome_arquivo}"
+    )
+
+    url_supabase_publica = (
+        f"{SUPABASE_URL}"
+        f"/storage/v1/object/public/"
+        f"{caminho_storage}"
+    )
+
+    print(
+        "📁 Arquivo destino:",
+        nome_arquivo
+    )
+
+    # ============================================================
+    # 8. VERIFICAR SE A MÚSICA JÁ EXISTE NO NEON
+    # ============================================================
+
+    musica_existente = (
+        Musica.objects
+        .filter(
+            videoId=video_id
+        )
+        .first()
+    )
+
+    # ============================================================
+    # 9. VERIFICAR SE O MP3 JÁ EXISTE NO SUPABASE
+    # ============================================================
+
+    arquivo_existe = False
+
+    url_verificacao = (
+        f"{SUPABASE_URL}"
+        f"/storage/v1/object/"
+        f"{NOME_DO_BUCKET}/"
+        f"{nome_arquivo}"
+    )
+
+    headers_verificacao = {
+        "Authorization": (
+            f"Bearer {SUPABASE_KEY}"
+        ),
+        "apikey": SUPABASE_KEY,
     }
 
     try:
-        url_youtube = f"https://youtube.com{video_id}"
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url_youtube, download=False)
-            stream_url = info.get('url', '')
-            
-            if stream_url:
-                # Transfere o fluxo de áudio diretamente para a memória RAM
-                resposta_stream = requests.get(stream_url, stream=True, timeout=15)
-                
-                # Endpoint REST oficial do Supabase Storage
-                url_upload_supabase = f"{SUPABASE_URL}/storage/v1/object/{NOME_DO_BUCKET}/{nome_arquivo}"
-                headers_supabase = {
-                    "Authorization": f"Bearer {SUPABASE_KEY}",
-                    "Content-Type": "audio/mp3"
-                }
-                
-                upload_req = requests.post(url_upload_supabase, headers=headers_supabase, data=resposta_stream.content, timeout=20)
-                
-                # Validação matemática limpa (Status 300 ou maior é erro de envio)
-                if upload_req.status_code >= 300:
-                    print(f"⚠️ Erro no Storage HTTP: {upload_req.status_code}")
-                    url_audio_final = ""
-    except Exception as e:
-        print(f"⚠️ Erro geral no processamento de mídia: {str(e)}")
-        url_audio_final = ""
 
-    # Fallback seguro (Sua engrenagem nunca para caso o Supabase falhe)
-    if not url_audio_final:
-        url_audio_final = f"https://vevioz.com{video_id}"
-
-    # 3. GRAVA NO SEU BANCO DE DADOS (NEON)
-    try:
-        nova_musica = Musica.objects.create(
-            titulo=titulo_limpo,
-            videoId=video_id,
-            cantor=cantor_limpo,
-            audio=url_audio_final,
+        resposta_verificacao = requests.head(
+            url_verificacao,
+            headers=headers_verificacao,
+            timeout=10
         )
-    except Exception as e:
-        return JsonResponse({"erro": f"Erro no Neon: {str(e)}"}, status=500)
 
-    return JsonResponse({
-        "status": "sucesso",
-        "id": nova_musica.id,
-        "titulo": nova_musica.titulo,
-        "videoId": nova_musica.videoId,
-        "cantor": nova_musica.cantor,
-        "audio": url_audio_final,
-        "url": url_audio_final,
-        "audio_url": url_audio_final
-    }, status=201)
+        print(
+            "🔎 Verificação do arquivo no Supabase:",
+            resposta_verificacao.status_code
+        )
+
+        if resposta_verificacao.status_code == 200:
+
+            arquivo_existe = True
+
+    except Exception as e:
+
+        print(
+            "⚠️ Não foi possível verificar "
+            "o arquivo existente:",
+            str(e)
+        )
+
+    # ============================================================
+    # 10. SE O ARQUIVO JÁ EXISTE
+    # ============================================================
+
+    if arquivo_existe:
+
+        print(
+            "✅ MP3 já existe no Supabase:",
+            nome_arquivo
+        )
+
+        if musica_existente:
+
+            musica_existente.audio = (
+                url_supabase_publica
+            )
+
+            musica_existente.titulo = (
+                titulo_limpo
+            )
+
+            musica_existente.cantor = (
+                cantor_limpo
+            )
+
+            musica_existente.save()
+
+            musica = musica_existente
+
+        else:
+
+            musica = Musica.objects.create(
+                titulo=titulo_limpo,
+                videoId=video_id,
+                cantor=cantor_limpo,
+                audio=url_supabase_publica,
+            )
+
+        return JsonResponse(
+            {
+                "status": "sucesso",
+                "id": musica.id,
+                "titulo": musica.titulo,
+                "videoId": musica.videoId,
+                "cantor": musica.cantor,
+                "audio": url_supabase_publica,
+                "url": url_supabase_publica,
+                "audio_url": url_supabase_publica
+            },
+            status=200
+        )
+
+    # ============================================================
+    # 11. SE EXISTE NO NEON MAS NÃO EXISTE NO SUPABASE
+    # ============================================================
+
+    if musica_existente:
+
+        print(
+            "⚠️ Música existe no Neon, "
+            "mas o MP3 não existe no Supabase."
+        )
+
+        print(
+            "🔄 Vamos baixar o áudio novamente."
+        )
+
+    # ============================================================
+    # 12. CRIAR DIRETÓRIO TEMPORÁRIO
+    # ============================================================
+
+    import tempfile
+
+    pasta_temporaria = tempfile.mkdtemp(
+        prefix="karaoke_audio_"
+    )
+
+    print(
+        "📂 Pasta temporária:",
+        pasta_temporaria
+    )
+
+    # ============================================================
+    # 13. URL CORRETA DO YOUTUBE
+    # ============================================================
+
+    url_youtube = (
+        f"https://www.youtube.com/watch?v={video_id}"
+    )
+
+    print(
+        "🔗 URL YouTube:",
+        url_youtube
+    )
+
+    # ============================================================
+    # 14. CONFIGURAÇÃO DO YT-DLP
+    # ============================================================
+
+    ydl_opts = {
+
+        "format": (
+            "bestaudio/best"
+        ),
+
+        "outtmpl": os.path.join(
+            pasta_temporaria,
+            "%(id)s.%(ext)s"
+        ),
+
+        "noplaylist": True,
+
+        "quiet": False,
+
+        "no_warnings": False,
+
+        "nocheckcertificate": True,
+
+        "postprocessors": [
+            {
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "mp3",
+                "preferredquality": "192",
+            }
+        ],
+    }
+
+    # ============================================================
+    # 15. BAIXAR E CONVERTER PARA MP3
+    # ============================================================
+
+    caminho_mp3 = os.path.join(
+        pasta_temporaria,
+        f"{video_id}.mp3"
+    )
+
+    try:
+
+        print(
+            "⬇️ Baixando áudio do YouTube..."
+        )
+
+        with yt_dlp.YoutubeDL(
+            ydl_opts
+        ) as ydl:
+
+            info = ydl.extract_info(
+                url_youtube,
+                download=True
+            )
+
+            print(
+                "🎵 YouTube encontrado:",
+                info.get(
+                    "title",
+                    "Sem título"
+                )
+            )
+
+        # ========================================================
+        # 16. CONFIRMAR MP3
+        # ========================================================
+
+        if not os.path.isfile(
+            caminho_mp3
+        ):
+
+            print(
+                "❌ FFmpeg não gerou o MP3 esperado:"
+            )
+
+            print(
+                caminho_mp3
+            )
+
+            arquivos_temporarios = (
+                os.listdir(
+                    pasta_temporaria
+                )
+            )
+
+            print(
+                "📂 Arquivos encontrados:",
+                arquivos_temporarios
+            )
+
+            return JsonResponse(
+                {
+                    "erro": (
+                        "O áudio foi baixado, "
+                        "mas o FFmpeg não gerou "
+                        "o arquivo MP3."
+                    )
+                },
+                status=500
+            )
+
+        # ========================================================
+        # 17. TAMANHO DO MP3
+        # ========================================================
+
+        tamanho_mp3 = os.path.getsize(
+            caminho_mp3
+        )
+
+        print(
+            "✅ MP3 criado:"
+        )
+
+        print(
+            "📄",
+            caminho_mp3
+        )
+
+        print(
+            "📦 Tamanho:",
+            tamanho_mp3,
+            "bytes"
+        )
+
+        if tamanho_mp3 <= 0:
+
+            return JsonResponse(
+                {
+                    "erro": (
+                        "O arquivo MP3 foi criado "
+                        "mas está vazio."
+                    )
+                },
+                status=500
+            )
+
+    except Exception as e:
+
+        print(
+            "❌ ERRO AO BAIXAR/CONVERTER:",
+            str(e)
+        )
+
+        return JsonResponse(
+            {
+                "erro": (
+                    "Não foi possível baixar "
+                    "ou converter o áudio: "
+                    f"{str(e)}"
+                )
+            },
+            status=500
+        )
+
+    # ============================================================
+    # 18. ENVIAR MP3 PARA O SUPABASE
+    # ============================================================
+
+    url_upload_supabase = (
+        f"{SUPABASE_URL}"
+        f"/storage/v1/object/"
+        f"{NOME_DO_BUCKET}/"
+        f"{nome_arquivo}"
+    )
+
+    headers_upload = {
+
+        "Authorization": (
+            f"Bearer {SUPABASE_KEY}"
+        ),
+
+        "apikey": SUPABASE_KEY,
+
+        "Content-Type": "audio/mpeg",
+
+        "x-upsert": "true",
+    }
+
+    try:
+
+        print(
+            "☁️ Enviando MP3 para o Supabase..."
+        )
+
+        with open(
+            caminho_mp3,
+            "rb"
+        ) as arquivo:
+
+            dados_mp3 = arquivo.read()
+
+        resposta_upload = requests.post(
+            url_upload_supabase,
+            headers=headers_upload,
+            data=dados_mp3,
+            timeout=60
+        )
+
+        print(
+            "☁️ Supabase upload HTTP:",
+            resposta_upload.status_code
+        )
+
+        if resposta_upload.status_code >= 300:
+
+            print(
+                "❌ Erro no upload para Supabase:"
+            )
+
+            print(
+                resposta_upload.text[:1000]
+            )
+
+            return JsonResponse(
+                {
+                    "erro": (
+                        "Não foi possível enviar "
+                        "o MP3 para o Supabase."
+                    ),
+                    "status_supabase": (
+                        resposta_upload.status_code
+                    ),
+                    "detalhes": (
+                        resposta_upload.text[:500]
+                    )
+                },
+                status=500
+            )
+
+        print(
+            "✅ MP3 enviado para o Supabase:"
+        )
+
+        print(
+            f"☁️ {NOME_DO_BUCKET}/{nome_arquivo}"
+        )
+
+    except Exception as e:
+
+        print(
+            "❌ ERRO NO UPLOAD SUPABASE:",
+            str(e)
+        )
+
+        return JsonResponse(
+            {
+                "erro": (
+                    "Erro ao enviar áudio "
+                    f"para o Supabase: {str(e)}"
+                )
+            },
+            status=500
+        )
+
+    # ============================================================
+    # 19. CONFIRMAR NOVAMENTE QUE O ARQUIVO EXISTE
+    # ============================================================
+
+    arquivo_confirmado = False
+
+    try:
+
+        resposta_confirmacao = requests.head(
+            url_verificacao,
+            headers=headers_verificacao,
+            timeout=10
+        )
+
+        print(
+            "🔍 Confirmação do upload:",
+            resposta_confirmacao.status_code
+        )
+
+        arquivo_confirmado = (
+            resposta_confirmacao.status_code == 200
+        )
+
+    except Exception as e:
+
+        print(
+            "⚠️ Erro ao confirmar upload:",
+            str(e)
+        )
+
+    if not arquivo_confirmado:
+
+        print(
+            "❌ O Supabase não confirmou "
+            "a existência do MP3."
+        )
+
+        return JsonResponse(
+            {
+                "erro": (
+                    "O upload foi enviado, "
+                    "mas o arquivo não pôde "
+                    "ser confirmado no Supabase."
+                )
+            },
+            status=500
+        )
+
+    print(
+        "✅ Arquivo confirmado no Supabase."
+    )
+
+    # ============================================================
+    # 20. AGORA SIM SALVAR NO NEON
+    # ============================================================
+
+    try:
+
+        if musica_existente:
+
+            musica_existente.titulo = (
+                titulo_limpo
+            )
+
+            musica_existente.cantor = (
+                cantor_limpo
+            )
+
+            musica_existente.audio = (
+                url_supabase_publica
+            )
+
+            musica_existente.save()
+
+            nova_musica = (
+                musica_existente
+            )
+
+            print(
+                "✅ Música existente atualizada no Neon."
+            )
+
+        else:
+
+            nova_musica = (
+                Musica.objects.create(
+                    titulo=titulo_limpo,
+                    videoId=video_id,
+                    cantor=cantor_limpo,
+                    audio=url_supabase_publica,
+                )
+            )
+
+            print(
+                "✅ Nova música salva no Neon."
+            )
+
+    except Exception as e:
+
+        print(
+            "❌ ERRO AO SALVAR NO NEON:",
+            str(e)
+        )
+
+        return JsonResponse(
+            {
+                "erro": (
+                    "O áudio foi enviado para "
+                    "o Supabase, mas ocorreu "
+                    "um erro ao salvar a música "
+                    f"no Neon: {str(e)}"
+                )
+            },
+            status=500
+        )
+
+    # ============================================================
+    # 21. RESPOSTA FINAL
+    # ============================================================
+
+    print(
+        "🎉 PROCESSAMENTO CONCLUÍDO:"
+    )
+
+    print(
+        "🎵 Música:",
+        nova_musica.titulo
+    )
+
+    print(
+        "🆔 VideoId:",
+        nova_musica.videoId
+    )
+
+    print(
+        "☁️ Arquivo:",
+        nome_arquivo
+    )
+
+    print(
+        "🔐 Storage:",
+        NOME_DO_BUCKET
+    )
+
+    return JsonResponse(
+        {
+            "status": "sucesso",
+
+            "id": nova_musica.id,
+
+            "titulo": nova_musica.titulo,
+
+            "videoId": nova_musica.videoId,
+
+            "cantor": nova_musica.cantor,
+
+            "audio": url_supabase_publica,
+
+            "url": url_supabase_publica,
+
+            "audio_url": url_supabase_publica
+        },
+        status=201
+    )
 
 
 
@@ -784,6 +1529,95 @@ def encontrar_audio(video_id):
 # ============================================================
 # BUSCAR ÁUDIO DE UMA MÚSICA
 # ============================================================
+
+def servir_audio_supabase(request, video_id):
+    """
+    Entrega o MP3 privado do Supabase através do Django.
+    """
+
+    if request.method != "GET":
+        return JsonResponse(
+            {"erro": "Método não permitido."},
+            status=405
+        )
+
+    if not video_id:
+        return JsonResponse(
+            {"erro": "videoId não informado."},
+            status=400
+        )
+
+    print(
+        "🎧 Servindo áudio pelo Django:",
+        video_id
+    )
+
+    # Gera uma URL temporária para o arquivo privado
+    signed_url = gerar_url_assinada_supabase(
+        video_id,
+        segundos=3600
+    )
+
+    print("🔗 URL assinada:", signed_url)
+
+    if not signed_url:
+        print(
+            "❌ Não foi possível gerar URL do áudio."
+        )
+
+        return JsonResponse(
+            {"erro": "Áudio não encontrado."},
+            status=404
+        )
+
+    try:
+        resposta = requests.get(
+            signed_url,
+            timeout=30
+        )
+
+        print(
+            "📥 Supabase respondeu:",
+            resposta.status_code,
+            "Tamanho:",
+            len(resposta.content)
+        )
+
+        if resposta.status_code != 200:
+            print(
+                "❌ Erro ao baixar áudio do Supabase:",
+                resposta.text[:500]
+            )
+
+            return JsonResponse(
+                {"erro": "Não foi possível obter o áudio."},
+                status=404
+            )
+
+        response = HttpResponse(
+            resposta.content,
+            content_type="audio/mpeg"
+        )
+
+        response["Content-Length"] = str(
+            len(resposta.content)
+        )
+
+        response["Cache-Control"] = "no-cache"
+
+        return response
+
+    except Exception as e:
+        print(
+            "❌ Erro servindo áudio:",
+            str(e)
+        )
+
+        return JsonResponse(
+            {"erro": "Erro interno ao carregar áudio."},
+            status=500
+        )
+
 
 def audio_da_musica(
     request,

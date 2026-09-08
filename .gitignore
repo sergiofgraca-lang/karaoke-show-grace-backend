@@ -8,3 +8,4 @@ ffmpeg_bin/
 usuarios/urlsgpt.py
 usuarios/viewsback.py
 usuarios/viewsbackgpt.py
+.vercel/
