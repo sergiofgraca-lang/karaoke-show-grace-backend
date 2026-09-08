@@ -78,10 +78,11 @@ def audio_supabase_existe(video_id):
 
 @csrf_exempt
 def processar_audio_youtube(request, video_id=None):
-    # Aceita tanto requisições POST (criar/buscar) quanto GET (playlist)
+    # 1. Permite tanto POST (para buscas novas) quanto GET (para carregar da playlist)
     if request.method not in ["POST", "GET"]:
         return JsonResponse({"erro": "Método inválido. Use POST ou GET."}, status=405)
 
+    # 2. Se o video_id não veio por parâmetro na URL, tenta capturar do corpo da requisição (POST)
     if not video_id:
         if request.content_type == "application/json":
             try:
@@ -96,12 +97,15 @@ def processar_audio_youtube(request, video_id=None):
             titulo = request.POST.get("titulo")
             cantor = request.POST.get("cantor", "")
     else:
-        # Se veio via GET por parâmetro de URL (Playlist)
+        # Se veio via GET da playlist, capturamos os dados textuais complementares opcionais
         titulo = request.GET.get("titulo", "Karaoke")
         cantor = request.GET.get("cantor", "")
 
     if not video_id:
         return JsonResponse({"erro": "O campo videoId é obrigatório."}, status=400)
+
+    # ... O restante do código de upload pro Supabase Storage e gravação no Neon continua igual embaixo ...
+
 
     titulo_limpo = limpar_texto(titulo)
     cantor_limpo = limpar_texto(cantor)

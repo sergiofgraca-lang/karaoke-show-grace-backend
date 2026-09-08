@@ -34,4 +34,6 @@ urlpatterns = [
 
     # Consultar o áudio real de uma música
     path("audio/<str:video_id>/", audio_da_musica),
+
+    path("audio/<str:video_id>/", processar_audio_youtube),
 ]
