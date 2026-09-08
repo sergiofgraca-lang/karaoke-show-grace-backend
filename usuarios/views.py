@@ -576,6 +576,10 @@ def processar_audio_youtube(request, video_id=None):
 
         "nocheckcertificate": True,
 
+             "js_runtimes": {
+            "node": {}
+        },
+
         "postprocessors": [
             {
                 "key": "FFmpegExtractAudio",
