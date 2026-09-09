@@ -3,6 +3,7 @@ import os
 import re
 import unicodedata
 import yt_dlp
+import imageio_ffmpeg
 import requests
 from django.conf import settings
 from django.db.models import Count
@@ -575,6 +576,8 @@ def processar_audio_youtube(request, video_id=None):
         "no_warnings": False,
 
         "nocheckcertificate": True,
+
+        "ffmpeg_location": imageio_ffmpeg.get_ffmpeg_exe(),
 
              "js_runtimes": {
             "node": {}

@@ -1,5 +1,4 @@
 [project]
 name = "app"
 version = "0.1.0"
-dependencies = [ "asgiref==3.11.1", "dj-database-url==3.1.2", "django==6.0.3", "django-cors-headers==4.9.0", "djangorestframework==3.17.1", "djangorestframework-simplejwt==5.5.1", "et-xmlfile==2.0.0", "gunicorn==25.3.0", "openpyxl==3.1.5", "packaging==26.0", "psycopg[binary]", "pyjwt==2.12.1", "python-dotenv==1.2.2", "sqlparse==0.5.5", "tzdata==2025.3", "whitenoise==6.12.0", "yt-dlp", "supabase==2.31.0", "requests" ]
-requires-python = "~=3.12.0"
+dependencies = [ "asgiref==3.11.1", "dj-database-url==3.1.2", "django==6.0.3", "django-cors-headers==4.9.0", "djangorestframework==3.17.1", "djangorestframework-simplejwt==5.5.1", "et-xmlfile==2.0.0", "gunicorn==25.3.0", "openpyxl==3.1.5", "packaging==26.0", "psycopg[binary]", "pyjwt==2.12.1", "python-dotenv==1.2.2", "sqlparse==0.5.5", "tzdata==2025.3", "whitenoise==6.12.0", "yt-dlp==2026.8.19", "yt-dlp-ejs==0.8.0", "imageio-ffmpeg==0.6.0", "supabase==2.31.0", "requests" ]
