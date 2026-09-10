@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import shutil
 import unicodedata
 import yt_dlp
 import imageio_ffmpeg
@@ -575,12 +576,20 @@ def processar_audio_youtube(request, video_id=None):
 
         "no_warnings": False,
 
-        "nocheckcertificate": True,
+               "nocheckcertificate": True,
 
         "ffmpeg_location": imageio_ffmpeg.get_ffmpeg_exe(),
 
-             "js_runtimes": {
-            "node": {}
+        "js_runtimes": {
+            "quickjs": {
+                "path": os.path.join(
+                    os.path.dirname(
+                        os.path.dirname(__file__)
+                    ),
+                    "runtime",
+                    "qjs"
+                )
+            }
         },
 
         "postprocessors": [
@@ -602,6 +611,8 @@ def processar_audio_youtube(request, video_id=None):
     )
 
     try:
+        print("🧪 Node encontrado:", shutil.which("node"))
+        print("🧪 Deno encontrado:", shutil.which("deno"))
 
         print(
             "⬇️ Baixando áudio do YouTube..."
