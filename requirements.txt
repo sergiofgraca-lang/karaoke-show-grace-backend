@@ -19,3 +19,5 @@ yt-dlp-ejs==0.8.0
 imageio-ffmpeg==0.6.0
 supabase==2.31.0
 requests
+bgutil-ytdlp-pot-provider==2.0.0
+
