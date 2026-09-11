@@ -579,18 +579,23 @@ def processar_audio_youtube(request, video_id=None):
                "nocheckcertificate": True,
 
         "ffmpeg_location": imageio_ffmpeg.get_ffmpeg_exe(),
+        "extractor_args": {
+            "youtubepot-bgutilhttp": {
+                 "base_url": "https://bgutil-ytdlp-pot-provider-0f67.onrender.com"
+    }
+},
 
-        "js_runtimes": {
-            "quickjs": {
-                "path": os.path.join(
-                    os.path.dirname(
-                        os.path.dirname(__file__)
-                    ),
-                    "runtime",
-                    "qjs"
-                )
-            }
-        },
+"js_runtimes": {
+    "quickjs": {
+        "path": os.path.join(
+          os.path.dirname(
+              os.path.dirname(__file__)
+          ),
+         "runtime",
+         "qjs"
+      )
+   }
+ },
 
         "postprocessors": [
             {
