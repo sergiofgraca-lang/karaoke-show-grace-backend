@@ -5,12 +5,22 @@ import shutil
 import unicodedata
 import yt_dlp
 import imageio_ffmpeg
+from yt_dlp.globals import plugin_dirs
+from yt_dlp.plugins import load_all_plugins
 import requests
 from django.conf import settings
 from django.db.models import Count
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from .models import Musica
+
+DIRETORIO_PLUGIN = os.path.dirname(os.path.dirname(__file__))
+
+plugin_dirs.value = ["default", DIRETORIO_PLUGIN]
+
+load_all_plugins()
+
+print("🔌 Diretório de plugins yt-dlp:", DIRETORIO_PLUGIN)
 
 # =========================================================================
 # CONFIGURAÇÃO SUPABASE STORAGE (AJUSTADA PARA O BUCKET 'audios')
