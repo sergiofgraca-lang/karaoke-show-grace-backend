@@ -4,6 +4,7 @@ import re
 import shutil
 import unicodedata
 import yt_dlp
+import sys
 import imageio_ffmpeg
 from yt_dlp.globals import plugin_dirs
 from yt_dlp.plugins import load_all_plugins
@@ -21,6 +22,22 @@ plugin_dirs.value = ["default", DIRETORIO_PLUGIN]
 load_all_plugins()
 
 print("🔌 Diretório de plugins yt-dlp:", DIRETORIO_PLUGIN)
+
+from yt_dlp_plugins.extractor import getpot_bgutil
+from yt_dlp_plugins.extractor import getpot_bgutil_http
+
+print("🧪 PYTHON VERSÃO:", sys.version)
+print("🧪 YT-DLP VERSÃO:", getattr(yt_dlp.version, "__version__", "desconhecida"))
+print("🧪 BGUTIL HTTP CLASSE:", getpot_bgutil_http.BgUtilHTTPPTP)
+print("🧪 BGUTIL HTTP PROVIDER:", getpot_bgutil_http.BgUtilHTTPPTP.PROVIDER_NAME)
+
+try:
+    from yt_dlp.extractor.youtube.pot import provider as pot_provider
+    print("🧪 PO TOKEN PROVIDERS:", list(pot_provider._pot_providers.value.keys()))
+except Exception as e:
+    print("❌ ERRO AO LER PO TOKEN PROVIDERS:", repr(e))
+
+print("🔌 Provider bgutil HTTP carregado explicitamente.")
 
 # =========================================================================
 # CONFIGURAÇÃO SUPABASE STORAGE (AJUSTADA PARA O BUCKET 'audios')
@@ -588,53 +605,39 @@ def processar_audio_youtube(request, video_id=None):
 
     ydl_opts = {
 
-        "format": (
-            "bestaudio/best"
-        ),
+    "format": (
+        "bestaudio/best"
+    ),
 
-        "outtmpl": os.path.join(
-            pasta_temporaria,
-            "%(id)s.%(ext)s"
-        ),
+    "outtmpl": os.path.join(
+        pasta_temporaria,
+        "%(id)s.%(ext)s"
+    ),
 
-        "noplaylist": True,
+    "noplaylist": True,
 
-        "quiet": False,
+    "quiet": False,
 
-        "no_warnings": False,
+    "no_warnings": False,
 
-               "nocheckcertificate": True,
+    "nocheckcertificate": True,
 
-        "ffmpeg_location": imageio_ffmpeg.get_ffmpeg_exe(),
-        "extractor_args": {
-    "youtubepot-bgutilhttp": {
-        "base_url": "https://bgutil-ytdlp-pot-provider-0f67.onrender.com"
+    "ffmpeg_location": imageio_ffmpeg.get_ffmpeg_exe(),
+
+    "extractor_args": {
+        "youtubepot-bgutilhttp": {
+            "base_url": "https://bgutil-ytdlp-pot-provider-0f67.onrender.com"
+        }
     },
-    "youtubepot-bgutilscript": {
-        "script_path": "C:\\caminho-inexistente"
-    },
-},
 
-"js_runtimes": {
-    "quickjs": {
-        "path": os.path.join(
-          os.path.dirname(
-              os.path.dirname(__file__)
-          ),
-         "runtime",
-         "qjs"
-      )
- }
- },
-
-        "postprocessors": [
-            {
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "192",
-            }
-        ],
-    }
+    "postprocessors": [
+        {
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "mp3",
+            "preferredquality": "192",
+        }
+    ],
+}
 
     # ============================================================
     # 15. BAIXAR E CONVERTER PARA MP3
@@ -2059,4 +2062,6 @@ def audio_da_musica(
         },
         status=404
     )
+
+
 
