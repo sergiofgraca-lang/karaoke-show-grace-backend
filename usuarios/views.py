@@ -554,6 +554,23 @@ def processar_audio_youtube(request, video_id=None):
         "🔗 URL YouTube:",
         url_youtube
     )
+    try:
+        teste_bgutil = requests.get(
+            "https://bgutil-ytdlp-pot-provider-0f67.onrender.com/ping",
+            timeout=10
+        )
+
+        print(
+            "🧪 TESTE BGUTIL PELO VERCEL:",
+            teste_bgutil.status_code,
+            teste_bgutil.text
+        )
+
+    except Exception as e:
+        print(
+            "❌ TESTE BGUTIL PELO VERCEL FALHOU:",
+            str(e)
+        )
 
     # ============================================================
     # 14. CONFIGURAÇÃO DO YT-DLP
@@ -580,9 +597,12 @@ def processar_audio_youtube(request, video_id=None):
 
         "ffmpeg_location": imageio_ffmpeg.get_ffmpeg_exe(),
         "extractor_args": {
-            "youtubepot-bgutilhttp": {
-                 "base_url": "https://bgutil-ytdlp-pot-provider-0f67.onrender.com"
-    }
+    "youtubepot-bgutilhttp": {
+        "base_url": "https://bgutil-ytdlp-pot-provider-0f67.onrender.com"
+    },
+    "youtubepot-bgutilscript": {
+        "script_path": "C:\\caminho-inexistente"
+    },
 },
 
 "js_runtimes": {
@@ -594,7 +614,7 @@ def processar_audio_youtube(request, video_id=None):
          "runtime",
          "qjs"
       )
-   }
+ }
  },
 
         "postprocessors": [
