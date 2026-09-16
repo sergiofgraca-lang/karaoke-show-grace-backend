@@ -115,7 +115,7 @@ def teste_bgutil(request):
         }
 
         
-        resultado["node_candidatos"] = {
+        resultado["runtime_candidatos"] = {
             caminho: {
                 "existe": os.path.exists(caminho),
                 "executavel": os.path.isfile(caminho) and os.access(caminho, os.X_OK),
@@ -126,6 +126,17 @@ def teste_bgutil(request):
                 "/opt/bin/node",
                 "/var/task/node",
                 "/var/task/nodejs/node",
+                "/usr/bin/deno",
+                "/usr/local/bin/deno",
+                "/opt/bin/deno",
+                "/var/task/deno",
+                "/usr/bin/bun",
+                "/usr/local/bin/bun",
+                "/opt/bin/bun",
+                "/var/task/bun",
+                "/usr/bin/qjs",
+                "/usr/local/bin/qjs",
+                "/opt/bin/qjs",
             ]
         }
 
