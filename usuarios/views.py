@@ -74,6 +74,44 @@ SUPABASE_KEY = (
 
 NOME_DO_BUCKET = "audios"  # <--- CORRIGIDO PARA O SEU BUCKET 'audios'
 # =========================================================================
+@csrf_exempt
+def teste_bgutil(request):
+    """
+    Diagnóstico temporário:
+    testa somente a comunicação Vercel -> Render/bgutil.
+    Não envolve yt-dlp, YouTube ou Supabase.
+    """
+    import time
+    import urllib.request
+
+    inicio = time.perf_counter()
+
+    try:
+        url = "https://bgutil-ytdlp-pot-provider-0f67.onrender.com/ping"
+
+        with urllib.request.urlopen(url, timeout=15) as resposta:
+            corpo = resposta.read().decode("utf-8")
+
+        tempo = time.perf_counter() - inicio
+
+        return JsonResponse({
+            "ok": resposta.status == 200,
+            "status": resposta.status,
+            "tempo_segundos": round(tempo, 3),
+            "resposta": corpo,
+            "cliente": "urllib.request",
+        })
+
+    except Exception as e:
+        tempo = time.perf_counter() - inicio
+
+        return JsonResponse({
+            "ok": False,
+            "status": None,
+            "tempo_segundos": round(tempo, 3),
+            "erro": str(e),
+            "cliente": "urllib.request",
+        }, status=502)
 
 def limpar_texto(texto):
     if not texto:
@@ -2109,6 +2147,7 @@ def audio_da_musica(
         },
         status=404
     )
+
 
 
 

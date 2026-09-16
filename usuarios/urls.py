@@ -11,10 +11,14 @@ from .views import (
     associar_audio,
     audio_da_musica,
     servir_audio_supabase,
+    teste_bgutil,
 )
 
 
 urlpatterns = [
+    # Diagnóstico temporário Vercel -> Render/bgutil
+    path("teste-bgutil/", teste_bgutil),
+
     # Salvar/processar uma música
     path(
         "salvar/",
@@ -63,4 +67,5 @@ urlpatterns = [
         servir_audio_supabase
     ),
 ]
+
 
