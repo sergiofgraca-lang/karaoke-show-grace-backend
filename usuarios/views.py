@@ -78,112 +78,110 @@ NOME_DO_BUCKET = "audios"  # <--- CORRIGIDO PARA O SEU BUCKET 'audios'
 def teste_bgutil(request):
     """
     Diagnóstico temporário:
-    testa android_music especificamente para verificar
-    se a Vercel consegue obter formatos de áudio.
+    testa acesso HTTP direto da Vercel ao YouTube,
+    sem yt-dlp, sem cookies e sem download de áudio.
     """
 
-    import os
-    import sys
     import time
-    import yt_dlp
+    import urllib.request
+    import urllib.error
 
     video_id = "8cr4wfJuTNw"
     url = f"https://www.youtube.com/watch?v={video_id}"
 
-    qjs_path = "/var/task/runtime/qjs"
+    inicio = time.perf_counter()
 
     resultado = {
-        "python": sys.version,
-        "yt_dlp": yt_dlp.version.__version__,
         "video_id": video_id,
-        "qjs": {
-            "caminho": qjs_path,
-            "existe": os.path.exists(qjs_path),
-            "executavel": os.access(qjs_path, os.X_OK),
-        },
+        "url": url,
         "etapa": "iniciando",
     }
 
-    inicio = time.perf_counter()
-
     try:
-        ydl_opts = {
-            "format": "bestaudio/best",
-            "quiet": False,
-            "no_warnings": False,
-            "noplaylist": True,
-            "skip_download": True,
-           "fetch_pot": "never",
-            "proxy": None,
-
-            "js_runtimes": {
-                "quickjs": {
-                    "path": qjs_path,
-                },
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/131.0.0.0 Safari/537.36"
+                ),
+                "Accept-Language": (
+                    "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7"
+                ),
             },
+        )
 
-            "extractor_args": {
-                "youtube": {
-                   "player_client": ["android_testsuite"],
-                },
-                "youtubepot-bgutilhttp": {
-                    "base_url": "https://bgutil-ytdlp-pot-provider-0f67.onrender.com"
-                },
-            },
-        }
+        resultado["etapa"] = "fazendo_requisicao"
 
-        print("🧪 TESTE ANDROID_MUSIC")
-        print("🧪 VIDEO:", video_id)
+        with urllib.request.urlopen(req, timeout=15) as resposta:
+            status = resposta.status
+            headers = dict(resposta.headers)
+            corpo = resposta.read(50000)
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            resultado["ydl_params"] = {
-                "js_runtimes": ydl.params.get("js_runtimes"),
-                "fetch_pot": ydl.params.get("fetch_pot"),
-                "extractor_args": ydl.params.get("extractor_args"),
-            }
-
-            resultado["etapa"] = "iniciando_extract_info"
-
-            info = ydl.extract_info(url, download=False)
-
-        formatos_audio = []
-
-        for f in info.get("formats", []):
-            acodec = f.get("acodec")
-
-            if acodec and acodec != "none":
-                formatos_audio.append({
-                    "format_id": f.get("format_id"),
-                    "ext": f.get("ext"),
-                    "resolution": f.get("resolution"),
-                    "acodec": acodec,
-                    "vcodec": f.get("vcodec"),
-                    "abr": f.get("abr"),
-                    "protocol": f.get("protocol"),
-                    "audio_ext": f.get("audio_ext"),
-                })
+        texto_resposta = corpo.decode("utf-8", errors="replace")
+        texto_lower = texto_resposta.lower()
 
         resultado.update({
             "ok": True,
-            "tempo_segundos": round(time.perf_counter() - inicio, 3),
-            "etapa": "formatos_audio_obtidos",
-            "titulo": info.get("title"),
-            "quantidade_formatos": len(info.get("formats", [])),
-            "quantidade_audio": len(formatos_audio),
-            "formatos_audio": formatos_audio,
-            "id_extraido": info.get("id"),
+            "tempo_segundos": round(
+                time.perf_counter() - inicio, 3
+            ),
+            "etapa": "resposta_recebida",
+            "status_http": status,
+            "content_type": headers.get("Content-Type"),
+            "content_length": headers.get("Content-Length"),
+            "tamanho_lido": len(corpo),
+            "sinais_youtube": {
+                "captcha": "captcha" in texto_lower,
+                "robot": "robot" in texto_lower,
+                "sign_in": "sign in" in texto_lower,
+                "confirmar_nao_e_bot": (
+                    "confirm you’re not a bot" in texto_lower
+                    or "confirm you're not a bot" in texto_lower
+                ),
+                "consent": "consent" in texto_lower,
+            },
+            "inicio_resposta": texto_resposta[:2000],
+        })
+
+    except urllib.error.HTTPError as e:
+        corpo = e.read(10000) if hasattr(e, "read") else b""
+        texto_resposta = corpo.decode("utf-8", errors="replace")
+        texto_lower = texto_resposta.lower()
+
+        resultado.update({
+            "ok": False,
+            "tempo_segundos": round(
+                time.perf_counter() - inicio, 3
+            ),
+            "etapa": "http_error",
+            "status_http": e.code,
+            "erro_tipo": "HTTPError",
+            "erro": str(e),
+            "sinais_youtube": {
+                "captcha": "captcha" in texto_lower,
+                "robot": "robot" in texto_lower,
+                "sign_in": "sign in" in texto_lower,
+                "confirmar_nao_e_bot": (
+                    "confirm you’re not a bot" in texto_lower
+                    or "confirm you're not a bot" in texto_lower
+                ),
+                "consent": "consent" in texto_lower,
+            },
+            "inicio_resposta": texto_resposta[:2000],
         })
 
     except Exception as e:
         resultado.update({
             "ok": False,
-            "tempo_segundos": round(time.perf_counter() - inicio, 3),
-            "etapa": "extract_info_falhou",
+            "tempo_segundos": round(
+                time.perf_counter() - inicio, 3
+            ),
+            "etapa": "erro_requisicao",
             "erro_tipo": type(e).__name__,
             "erro": str(e),
         })
-
-        print("❌ ERRO ANDROID_MUSIC:", repr(e))
 
     return JsonResponse(resultado)
 
@@ -2044,6 +2042,7 @@ def audio_da_musica(
         },
         status=404
     )
+
 
 
 
