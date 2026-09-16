@@ -78,22 +78,29 @@ NOME_DO_BUCKET = "audios"  # <--- CORRIGIDO PARA O SEU BUCKET 'audios'
 def teste_bgutil(request):
     """
     Diagnóstico temporário:
-    testa a extração real do YouTube pelo yt-dlp na Vercel,
-    usando o provider bgutil HTTP.
+    verifica QuickJS + bgutil + extract_info do YouTube na Vercel.
     """
 
-    import time
+    import os
     import sys
+    import time
     import yt_dlp
 
     video_id = "8cr4wfJuTNw"
     url = f"https://www.youtube.com/watch?v={video_id}"
 
+    qjs_path = "/var/task/runtime/qjs"
+
     resultado = {
         "python": sys.version,
         "yt_dlp": yt_dlp.version.__version__,
         "video_id": video_id,
-        "etapa": "iniciando_extract_info",
+        "qjs": {
+            "caminho": qjs_path,
+            "existe": os.path.exists(qjs_path),
+            "executavel": os.access(qjs_path, os.X_OK),
+        },
+        "etapa": "iniciando",
     }
 
     inicio = time.perf_counter()
@@ -107,6 +114,13 @@ def teste_bgutil(request):
             "skip_download": True,
             "fetch_pot": "always",
             "proxy": None,
+
+            "js_runtimes": {
+                "quickjs": {
+                    "path": qjs_path,
+                },
+            },
+
             "extractor_args": {
                 "youtubepot-bgutilhttp": {
                     "base_url": "https://bgutil-ytdlp-pot-provider-0f67.onrender.com"
@@ -114,11 +128,29 @@ def teste_bgutil(request):
             },
         }
 
-        print("🧪 INICIANDO EXTRACT_INFO PELO TESTE BGUTIL")
+        resultado["ydl_config"] = {
+            "js_runtimes": ydl_opts["js_runtimes"],
+            "fetch_pot": ydl_opts["fetch_pot"],
+            "extractor_args": ydl_opts["extractor_args"],
+        }
+
+        print("🧪 INICIANDO TESTE QUICKJS + BGUTIL")
         print("🧪 VIDEO:", video_id)
+        print("🧪 QJS:", qjs_path)
+        print("🧪 QJS EXISTE:", os.path.exists(qjs_path))
+        print("🧪 QJS EXECUTÁVEL:", os.access(qjs_path, os.X_OK))
+        print("🧪 JS RUNTIMES:", ydl_opts["js_runtimes"])
         print("🧪 PROVIDER:", ydl_opts["extractor_args"])
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            resultado["ydl_params"] = {
+                "js_runtimes": ydl.params.get("js_runtimes"),
+                "fetch_pot": ydl.params.get("fetch_pot"),
+                "extractor_args": ydl.params.get("extractor_args"),
+            }
+
+            resultado["etapa"] = "iniciando_extract_info"
+
             info = ydl.extract_info(url, download=False)
 
         resultado.update({
@@ -139,9 +171,11 @@ def teste_bgutil(request):
             "erro": str(e),
         })
 
-        print("❌ ERRO NO EXTRACT_INFO:", repr(e))
+        print("❌ ERRO NO TESTE QUICKJS + BGUTIL:", repr(e))
 
     return JsonResponse(resultado)
+
+
 @csrf_exempt
 def processar_audio_youtube(request, video_id=None):
     """
