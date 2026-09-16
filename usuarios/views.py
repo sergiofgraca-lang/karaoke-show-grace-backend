@@ -121,7 +121,7 @@ def teste_bgutil(request):
             "no_warnings": False,
             "nocheckcertificate": True,
 
-            "fetch_pot": "always",
+            "fetch_pot": "never",
 
             "js_runtimes": {
                 "quickjs": {
@@ -140,7 +140,7 @@ def teste_bgutil(request):
         }
 
         resultado["ydl_opts"] = {
-            "fetch_pot": "always",
+            "fetch_pot": "never",
             "js_runtimes": {
                 "quickjs": {
                     "path": qjs_path,
@@ -2061,3 +2061,4 @@ def audio_da_musica(
         },
         status=404
     )
+
