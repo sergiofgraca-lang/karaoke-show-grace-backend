@@ -22,7 +22,7 @@ DEBUG = True
 ALLOWED_HOSTS = [
     "127.0.0.1",
     "localhost",
-    "karaoke-show-grace-backend.vercel.app",
+    ".vercel.app",
     ".vercel.app",
 ]
 
@@ -81,7 +81,7 @@ CORS_ALLOWED_ORIGINS = [
 
 # Certifique-se também de que o domínio do backend está nos ALLOWED_HOSTS
 ALLOWED_HOSTS = [
-    "karaoke-show-grace-backend.vercel.app",
+    ".vercel.app",
     "localhost",
     "127.0.0.1",
 ]
