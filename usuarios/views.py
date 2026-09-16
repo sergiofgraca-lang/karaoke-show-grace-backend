@@ -183,7 +183,7 @@ def teste_bgutil(request):
             "no_warnings": False,
             "nocheckcertificate": True,
 
-            "fetch_pot": "never",
+            "fetch_pot": "always",
 
             "js_runtimes": {
                 "quickjs": {
@@ -202,7 +202,7 @@ def teste_bgutil(request):
         }
 
         resultado["ydl_opts"] = {
-            "fetch_pot": "never",
+            "fetch_pot": "always",
             "js_runtimes": {
                 "quickjs": {
                     "path": qjs_path,
