@@ -78,13 +78,13 @@ NOME_DO_BUCKET = "audios"  # <--- CORRIGIDO PARA O SEU BUCKET 'audios'
 def teste_bgutil(request):
     """
     Diagnóstico temporário:
-    testa acesso HTTP direto da Vercel ao YouTube,
-    sem yt-dlp, sem cookies e sem download de áudio.
+    testa o yt-dlp na extração do YouTube,
+    sem download, sem FFmpeg e sem Supabase.
     """
 
     import time
-    import urllib.request
-    import urllib.error
+    import shutil
+    import yt_dlp
 
     video_id = "8cr4wfJuTNw"
     url = f"https://www.youtube.com/watch?v={video_id}"
@@ -98,93 +98,112 @@ def teste_bgutil(request):
     }
 
     try:
-        req = urllib.request.Request(
-            url,
-            headers={
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/131.0.0.0 Safari/537.36"
-                ),
-                "Accept-Language": (
-                    "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7"
-                ),
-            },
+        qjs_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "runtime",
+            "qjs",
         )
 
-        resultado["etapa"] = "fazendo_requisicao"
+        resultado["ambiente"] = {
+            "python": os.sys.version,
+            "yt_dlp": getattr(yt_dlp, "__version__", "desconhecido"),
+            "node": shutil.which("node"),
+            "deno": shutil.which("deno"),
+            "qjs_path": qjs_path,
+            "qjs_existe": os.path.exists(qjs_path),
+            "qjs_executavel": os.access(qjs_path, os.X_OK),
+        }
 
-        with urllib.request.urlopen(req, timeout=15) as resposta:
-            status = resposta.status
-            headers = dict(resposta.headers)
-            corpo = resposta.read(50000)
+        resultado["etapa"] = "criando_youtube_dl"
 
-        texto_resposta = corpo.decode("utf-8", errors="replace")
-        texto_lower = texto_resposta.lower()
+        ydl_opts = {
+            "quiet": False,
+            "no_warnings": False,
+            "nocheckcertificate": True,
+
+            "fetch_pot": "always",
+
+            "js_runtimes": {
+                "quickjs": {
+                    "path": qjs_path,
+                }
+            },
+
+            "extractor_args": {
+                "youtubepot-bgutilhttp": {
+                    "base_url": (
+                        "https://bgutil-ytdlp-pot-provider-0f67"
+                        ".onrender.com"
+                    )
+                }
+            },
+        }
+
+        resultado["ydl_opts"] = {
+            "fetch_pot": "always",
+            "js_runtimes": {
+                "quickjs": {
+                    "path": qjs_path,
+                }
+            },
+            "bgutil_base_url": (
+                "https://bgutil-ytdlp-pot-provider-0f67"
+                ".onrender.com"
+            ),
+        }
+
+        resultado["etapa"] = "extraindo_info"
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(
+                url,
+                download=False,
+            )
+
+        formatos = info.get("formats") or []
+
+        formatos_audio = []
+
+        for formato in formatos:
+            if formato.get("acodec") not in (None, "none"):
+                formatos_audio.append({
+                    "format_id": formato.get("format_id"),
+                    "ext": formato.get("ext"),
+                    "acodec": formato.get("acodec"),
+                    "abr": formato.get("abr"),
+                    "tbr": formato.get("tbr"),
+                    "vcodec": formato.get("vcodec"),
+                })
 
         resultado.update({
             "ok": True,
+            "etapa": "extracao_concluida",
             "tempo_segundos": round(
-                time.perf_counter() - inicio, 3
+                time.perf_counter() - inicio,
+                3,
             ),
-            "etapa": "resposta_recebida",
-            "status_http": status,
-            "content_type": headers.get("Content-Type"),
-            "content_length": headers.get("Content-Length"),
-            "tamanho_lido": len(corpo),
-            "sinais_youtube": {
-                "captcha": "captcha" in texto_lower,
-                "robot": "robot" in texto_lower,
-                "sign_in": "sign in" in texto_lower,
-                "confirmar_nao_e_bot": (
-                    "confirm you’re not a bot" in texto_lower
-                    or "confirm you're not a bot" in texto_lower
-                ),
-                "consent": "consent" in texto_lower,
-            },
-            "inicio_resposta": texto_resposta[:2000],
-        })
-
-    except urllib.error.HTTPError as e:
-        corpo = e.read(10000) if hasattr(e, "read") else b""
-        texto_resposta = corpo.decode("utf-8", errors="replace")
-        texto_lower = texto_resposta.lower()
-
-        resultado.update({
-            "ok": False,
-            "tempo_segundos": round(
-                time.perf_counter() - inicio, 3
-            ),
-            "etapa": "http_error",
-            "status_http": e.code,
-            "erro_tipo": "HTTPError",
-            "erro": str(e),
-            "sinais_youtube": {
-                "captcha": "captcha" in texto_lower,
-                "robot": "robot" in texto_lower,
-                "sign_in": "sign in" in texto_lower,
-                "confirmar_nao_e_bot": (
-                    "confirm you’re not a bot" in texto_lower
-                    or "confirm you're not a bot" in texto_lower
-                ),
-                "consent": "consent" in texto_lower,
-            },
-            "inicio_resposta": texto_resposta[:2000],
+            "titulo": info.get("title"),
+            "uploader": info.get("uploader"),
+            "extractor": info.get("extractor"),
+            "extractor_key": info.get("extractor_key"),
+            "formatos_total": len(formatos),
+            "formatos_audio": formatos_audio,
         })
 
     except Exception as e:
+
         resultado.update({
             "ok": False,
+            "etapa": "erro_extracao",
             "tempo_segundos": round(
-                time.perf_counter() - inicio, 3
+                time.perf_counter() - inicio,
+                3,
             ),
-            "etapa": "erro_requisicao",
             "erro_tipo": type(e).__name__,
             "erro": str(e),
         })
 
     return JsonResponse(resultado)
-
 
 @csrf_exempt
 def processar_audio_youtube(request, video_id=None):
@@ -2042,12 +2061,3 @@ def audio_da_musica(
         },
         status=404
     )
-
-
-
-
-
-
-
-
-
