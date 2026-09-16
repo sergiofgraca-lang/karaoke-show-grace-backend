@@ -9,3 +9,5 @@ usuarios/urlsgpt.py
 usuarios/viewsback.py
 usuarios/viewsbackgpt.py
 .vercel/
+.vercel
+.env*

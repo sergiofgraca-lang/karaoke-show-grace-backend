@@ -33,7 +33,27 @@ print("🧪 BGUTIL HTTP PROVIDER:", getpot_bgutil_http.BgUtilHTTPPTP.PROVIDER_NA
 
 try:
     from yt_dlp.extractor.youtube.pot import provider as pot_provider
-    print("🧪 PO TOKEN PROVIDERS:", list(pot_provider._pot_providers.value.keys()))
+
+    print(
+        "🧪 PO TOKEN PROVIDERS:",
+        list(pot_provider._pot_providers.value.keys())
+    )
+
+    print(
+        "🧪 BGUTIL HTTP REGISTRADO:",
+        "BgUtilHTTP" in pot_provider._pot_providers.value
+    )
+
+    print(
+        "🧪 BGUTIL SCRIPT NODE REGISTRADO:",
+        "BgUtilScriptNode" in pot_provider._pot_providers.value
+    )
+
+    print(
+        "🧪 BGUTIL SCRIPT DENO REGISTRADO:",
+        "BgUtilScriptDeno" in pot_provider._pot_providers.value
+    )
+
 except Exception as e:
     print("❌ ERRO AO LER PO TOKEN PROVIDERS:", repr(e))
 
@@ -624,6 +644,8 @@ def processar_audio_youtube(request, video_id=None):
 
     "ffmpeg_location": imageio_ffmpeg.get_ffmpeg_exe(),
 
+    "fetch_pot": "always",
+
     "extractor_args": {
         "youtubepot-bgutilhttp": {
             "base_url": "https://bgutil-ytdlp-pot-provider-0f67.onrender.com"
@@ -652,9 +674,34 @@ def processar_audio_youtube(request, video_id=None):
         print("🧪 Node encontrado:", shutil.which("node"))
         print("🧪 Deno encontrado:", shutil.which("deno"))
 
+        qjs_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "runtime", "qjs")
+
+        print("🧪 QJS caminho esperado:", qjs_path)
+        print("🧪 QJS existe:", os.path.exists(qjs_path))
+        print("🧪 QJS executável:", os.access(qjs_path, os.X_OK))
+
         print(
             "⬇️ Baixando áudio do YouTube..."
         )
+
+        try:
+            from yt_dlp.extractor.youtube.pot import provider as pot_provider
+
+            providers_atuais = list(
+                pot_provider._pot_providers.value.keys()
+            )
+
+            print(
+                "🧪 PROVIDERS DENTRO DO DOWNLOAD:",
+                providers_atuais
+            )
+
+        except Exception as e:
+
+            print(
+                "❌ ERRO AO LER PROVIDERS NO DOWNLOAD:",
+                repr(e)
+            )
 
         with yt_dlp.YoutubeDL(
             ydl_opts
@@ -2062,6 +2109,8 @@ def audio_da_musica(
         },
         status=404
     )
+
+
 
 
 
