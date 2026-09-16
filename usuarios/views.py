@@ -124,7 +124,7 @@ def teste_bgutil(request):
 
             "extractor_args": {
                 "youtube": {
-                   "player_client": ["android_creator"],
+                   "player_client": ["android_testsuite"],
                 },
                 "youtubepot-bgutilhttp": {
                     "base_url": "https://bgutil-ytdlp-pot-provider-0f67.onrender.com"
