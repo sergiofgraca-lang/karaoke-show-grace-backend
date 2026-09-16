@@ -114,6 +114,21 @@ def teste_bgutil(request):
             "qjs_executavel": os.access(qjs_path, os.X_OK),
         }
 
+        
+        resultado["node_candidatos"] = {
+            caminho: {
+                "existe": os.path.exists(caminho),
+                "executavel": os.path.isfile(caminho) and os.access(caminho, os.X_OK),
+            }
+            for caminho in [
+                "/usr/bin/node",
+                "/usr/local/bin/node",
+                "/opt/bin/node",
+                "/var/task/node",
+                "/var/task/nodejs/node",
+            ]
+        }
+
         resultado["etapa"] = "criando_youtube_dl"
 
         ydl_opts = {
