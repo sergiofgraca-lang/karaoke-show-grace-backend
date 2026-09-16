@@ -113,7 +113,7 @@ def teste_bgutil(request):
             "no_warnings": False,
             "noplaylist": True,
             "skip_download": True,
-            "fetch_pot": "always",
+           "fetch_pot": "never",
             "proxy": None,
 
             "js_runtimes": {
