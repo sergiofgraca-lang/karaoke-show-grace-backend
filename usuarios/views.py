@@ -78,7 +78,8 @@ NOME_DO_BUCKET = "audios"  # <--- CORRIGIDO PARA O SEU BUCKET 'audios'
 def teste_bgutil(request):
     """
     Diagnóstico temporário:
-    verifica QuickJS + bgutil + extract_info do YouTube na Vercel.
+    testa android_music especificamente para verificar
+    se a Vercel consegue obter formatos de áudio.
     """
 
     import os
@@ -122,25 +123,17 @@ def teste_bgutil(request):
             },
 
             "extractor_args": {
+                "youtube": {
+                    "player_client": ["android_music"],
+                },
                 "youtubepot-bgutilhttp": {
                     "base_url": "https://bgutil-ytdlp-pot-provider-0f67.onrender.com"
-                }
+                },
             },
         }
 
-        resultado["ydl_config"] = {
-            "js_runtimes": ydl_opts["js_runtimes"],
-            "fetch_pot": ydl_opts["fetch_pot"],
-            "extractor_args": ydl_opts["extractor_args"],
-        }
-
-        print("🧪 INICIANDO TESTE QUICKJS + BGUTIL")
+        print("🧪 TESTE ANDROID_MUSIC")
         print("🧪 VIDEO:", video_id)
-        print("🧪 QJS:", qjs_path)
-        print("🧪 QJS EXISTE:", os.path.exists(qjs_path))
-        print("🧪 QJS EXECUTÁVEL:", os.access(qjs_path, os.X_OK))
-        print("🧪 JS RUNTIMES:", ydl_opts["js_runtimes"])
-        print("🧪 PROVIDER:", ydl_opts["extractor_args"])
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             resultado["ydl_params"] = {
@@ -153,12 +146,31 @@ def teste_bgutil(request):
 
             info = ydl.extract_info(url, download=False)
 
+        formatos_audio = []
+
+        for f in info.get("formats", []):
+            acodec = f.get("acodec")
+
+            if acodec and acodec != "none":
+                formatos_audio.append({
+                    "format_id": f.get("format_id"),
+                    "ext": f.get("ext"),
+                    "resolution": f.get("resolution"),
+                    "acodec": acodec,
+                    "vcodec": f.get("vcodec"),
+                    "abr": f.get("abr"),
+                    "protocol": f.get("protocol"),
+                    "audio_ext": f.get("audio_ext"),
+                })
+
         resultado.update({
             "ok": True,
             "tempo_segundos": round(time.perf_counter() - inicio, 3),
-            "etapa": "extract_info_concluido",
+            "etapa": "formatos_audio_obtidos",
             "titulo": info.get("title"),
-            "formatos": len(info.get("formats", [])),
+            "quantidade_formatos": len(info.get("formats", [])),
+            "quantidade_audio": len(formatos_audio),
+            "formatos_audio": formatos_audio,
             "id_extraido": info.get("id"),
         })
 
@@ -171,7 +183,7 @@ def teste_bgutil(request):
             "erro": str(e),
         })
 
-        print("❌ ERRO NO TESTE QUICKJS + BGUTIL:", repr(e))
+        print("❌ ERRO ANDROID_MUSIC:", repr(e))
 
     return JsonResponse(resultado)
 
