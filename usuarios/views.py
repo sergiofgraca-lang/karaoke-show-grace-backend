@@ -78,79 +78,68 @@ NOME_DO_BUCKET = "audios"  # <--- CORRIGIDO PARA O SEU BUCKET 'audios'
 def teste_bgutil(request):
     """
     Diagnóstico temporário:
-    testa Vercel -> Render/bgutil usando:
-    1. urllib.request
-    2. rede interna do yt-dlp
-    3. versão do Python e yt-dlp
+    testa a extração real do YouTube pelo yt-dlp na Vercel,
+    usando o provider bgutil HTTP.
     """
 
     import time
-    import urllib.request
     import sys
     import yt_dlp
 
-    url = "https://bgutil-ytdlp-pot-provider-0f67.onrender.com/ping"
+    video_id = "8cr4wfJuTNw"
+    url = f"https://www.youtube.com/watch?v={video_id}"
 
     resultado = {
         "python": sys.version,
         "yt_dlp": yt_dlp.version.__version__,
+        "video_id": video_id,
+        "etapa": "iniciando_extract_info",
     }
 
-    # ---------------------------------------------------------
-    # TESTE 1 - urllib.request
-    # ---------------------------------------------------------
-    inicio = time.perf_counter()
-
-    try:
-        with urllib.request.urlopen(url, timeout=15) as resposta:
-            corpo = resposta.read().decode("utf-8")
-
-        resultado["urllib"] = {
-            "ok": resposta.status == 200,
-            "status": resposta.status,
-            "tempo_segundos": round(time.perf_counter() - inicio, 3),
-            "resposta": corpo,
-        }
-
-    except Exception as e:
-        resultado["urllib"] = {
-            "ok": False,
-            "status": None,
-            "tempo_segundos": round(time.perf_counter() - inicio, 3),
-            "erro": str(e),
-        }
-
-    # ---------------------------------------------------------
-    # TESTE 2 - rede usada pelo próprio yt-dlp
-    # ---------------------------------------------------------
     inicio = time.perf_counter()
 
     try:
         ydl_opts = {
-            "quiet": True,
-            "no_warnings": True,
+            "format": "bestaudio/best",
+            "quiet": False,
+            "no_warnings": False,
+            "noplaylist": True,
+            "skip_download": True,
+            "fetch_pot": "always",
             "proxy": None,
+            "extractor_args": {
+                "youtubepot-bgutilhttp": {
+                    "base_url": "https://bgutil-ytdlp-pot-provider-0f67.onrender.com"
+                }
+            },
         }
+
+        print("🧪 INICIANDO EXTRACT_INFO PELO TESTE BGUTIL")
+        print("🧪 VIDEO:", video_id)
+        print("🧪 PROVIDER:", ydl_opts["extractor_args"])
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            resposta = ydl.urlopen(url)
-            corpo = resposta.read().decode("utf-8")
+            info = ydl.extract_info(url, download=False)
 
-        resultado["yt_dlp_urlopen"] = {
-            "ok": resposta.status == 200,
-            "status": resposta.status,
+        resultado.update({
+            "ok": True,
             "tempo_segundos": round(time.perf_counter() - inicio, 3),
-            "resposta": corpo,
-        }
+            "etapa": "extract_info_concluido",
+            "titulo": info.get("title"),
+            "formatos": len(info.get("formats", [])),
+            "id_extraido": info.get("id"),
+        })
 
     except Exception as e:
-        resultado["yt_dlp_urlopen"] = {
+        resultado.update({
             "ok": False,
-            "status": None,
             "tempo_segundos": round(time.perf_counter() - inicio, 3),
+            "etapa": "extract_info_falhou",
+            "erro_tipo": type(e).__name__,
             "erro": str(e),
-            "tipo_erro": type(e).__name__,
-        }
+        })
+
+        print("❌ ERRO NO EXTRACT_INFO:", repr(e))
 
     return JsonResponse(resultado)
 @csrf_exempt
@@ -2009,6 +1998,7 @@ def audio_da_musica(
         },
         status=404
     )
+
 
 
 
