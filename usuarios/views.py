@@ -78,219 +78,81 @@ NOME_DO_BUCKET = "audios"  # <--- CORRIGIDO PARA O SEU BUCKET 'audios'
 def teste_bgutil(request):
     """
     Diagnóstico temporário:
-    testa somente a comunicação Vercel -> Render/bgutil.
-    Não envolve yt-dlp, YouTube ou Supabase.
+    testa Vercel -> Render/bgutil usando:
+    1. urllib.request
+    2. rede interna do yt-dlp
+    3. versão do Python e yt-dlp
     """
+
     import time
     import urllib.request
+    import sys
+    import yt_dlp
 
+    url = "https://bgutil-ytdlp-pot-provider-0f67.onrender.com/ping"
+
+    resultado = {
+        "python": sys.version,
+        "yt_dlp": yt_dlp.version.__version__,
+    }
+
+    # ---------------------------------------------------------
+    # TESTE 1 - urllib.request
+    # ---------------------------------------------------------
     inicio = time.perf_counter()
 
     try:
-        url = "https://bgutil-ytdlp-pot-provider-0f67.onrender.com/ping"
-
         with urllib.request.urlopen(url, timeout=15) as resposta:
             corpo = resposta.read().decode("utf-8")
 
-        tempo = time.perf_counter() - inicio
-
-        return JsonResponse({
+        resultado["urllib"] = {
             "ok": resposta.status == 200,
             "status": resposta.status,
-            "tempo_segundos": round(tempo, 3),
+            "tempo_segundos": round(time.perf_counter() - inicio, 3),
             "resposta": corpo,
-            "cliente": "urllib.request",
-        })
+        }
 
     except Exception as e:
-        tempo = time.perf_counter() - inicio
-
-        return JsonResponse({
+        resultado["urllib"] = {
             "ok": False,
             "status": None,
-            "tempo_segundos": round(tempo, 3),
+            "tempo_segundos": round(time.perf_counter() - inicio, 3),
             "erro": str(e),
-            "cliente": "urllib.request",
-        }, status=502)
+        }
 
-def limpar_texto(texto):
-    if not texto:
-        return "Desconhecido"
-    texto = (
-        unicodedata.normalize("NFKD", str(texto))
-        .encode("ascii", "ignore")
-        .decode("utf-8")
-    )
-    return texto.strip()
-
-# =========================================================================
-# BLOCO DE FUNÇÕES UTILITÁRIAS RESTAURADAS (LIMPEZA TOTAL DE ERROS)
-# =========================================================================
-
-def eh_url_supabase(url):
-    if not url:
-        return False
-    return "supabase.co" in str(url)
-
-
-def validar_video_id(video_id):
-    """
-    Valida se o formato do videoId do YouTube está correto (11 caracteres válidos).
-    Resolve os erros das linhas 554 e 771.
-    """
-    if not video_id:
-        return False
-    # Padrão regex clássico para IDs do YouTube
-    padrao = re.compile(r'^[a-zA-Z0-9_-]{11}$')
-    return bool(padrao.match(str(video_id)))
-
-
-def supabase_configurado():
-    if not SUPABASE_URL:
-        return False
-
-    if not SUPABASE_KEY:
-        return False
-
-    return True
-
-
-def gerar_url_assinada_supabase(video_id, segundos=3600):
-
-
-
-
-    if not supabase_configurado():
-        print("❌ Supabase não configurado.")
-        return None
-
-    caminho = f"{video_id}.mp3"
-
-    url = (
-    f"{SUPABASE_URL}"
-    f"/storage/v1/object/sign/"
-    f"{NOME_DO_BUCKET}/"
-    f"{caminho}"
-)
-
-    headers = {
-        "Authorization": f"Bearer {SUPABASE_KEY}",
-        "apikey": SUPABASE_KEY,
-        "Content-Type": "application/json",
-    }
-
-    dados = {
-        "expiresIn": segundos
-    }
+    # ---------------------------------------------------------
+    # TESTE 2 - rede usada pelo próprio yt-dlp
+    # ---------------------------------------------------------
+    inicio = time.perf_counter()
 
     try:
-        resposta = requests.post(
-            url,
-            headers=headers,
-            json=dados,
-            timeout=15
-        )
+        ydl_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "proxy": None,
+        }
 
-        print(
-            "🔐 Supabase assinatura HTTP:",
-            resposta.status_code
-        )
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            resposta = ydl.urlopen(url)
+            corpo = resposta.read().decode("utf-8")
 
-        if resposta.status_code >= 300:
-            print(
-                "❌ Erro ao gerar URL assinada:",
-                resposta.text
-            )
-            return None
-
-        resultado = resposta.json()
-
-        signed_url = resultado.get("signedURL")
-
-        if not signed_url:
-            print(
-                "❌ Supabase não retornou signedURL."
-            )
-            return None
-
-        if signed_url.startswith("/object/"):
-            signed_url = (
-                SUPABASE_URL
-                + "/storage/v1"
-                + signed_url
-            )
-        elif signed_url.startswith("/"):
-            signed_url = (
-                SUPABASE_URL
-                + signed_url
-            )
-
-        print(
-            "✅ URL assinada gerada com sucesso."
-        )
-
-        return signed_url
+        resultado["yt_dlp_urlopen"] = {
+            "ok": resposta.status == 200,
+            "status": resposta.status,
+            "tempo_segundos": round(time.perf_counter() - inicio, 3),
+            "resposta": corpo,
+        }
 
     except Exception as e:
-        print(
-            "❌ Erro ao gerar URL assinada:",
-            str(e)
-        )
-        return None
+        resultado["yt_dlp_urlopen"] = {
+            "ok": False,
+            "status": None,
+            "tempo_segundos": round(time.perf_counter() - inicio, 3),
+            "erro": str(e),
+            "tipo_erro": type(e).__name__,
+        }
 
-
-def audio_supabase_existe(video_id):
-    """
-    Verifica se o MP3 existe no bucket privado do Supabase.
-    Gera uma URL assinada temporária e testa o arquivo.
-    """
-
-    if not video_id:
-        return False
-
-    try:
-        signed_url = gerar_url_assinada_supabase(
-            video_id,
-            segundos=60
-        )
-
-        if not signed_url:
-            print(
-                "❌ Não foi possível gerar URL assinada para verificação."
-            )
-            return False
-
-        print(
-            "🔎 Testando arquivo através da URL assinada..."
-        )
-
-        resposta = requests.get(
-            signed_url,
-            headers={
-                "Range": "bytes=0-0"
-            },
-            timeout=10
-        )
-
-        print(
-            "🔎 Verificação pela URL assinada:",
-            resposta.status_code
-        )
-
-        return resposta.status_code in (200, 206)
-
-    except Exception as e:
-
-        print(
-            "❌ Erro verificando áudio no Supabase:",
-            str(e)
-        )
-
-        return False
-
-# =========================================================================
-
-
+    return JsonResponse(resultado)
 @csrf_exempt
 def processar_audio_youtube(request, video_id=None):
     """
@@ -2147,6 +2009,7 @@ def audio_da_musica(
         },
         status=404
     )
+
 
 
 
