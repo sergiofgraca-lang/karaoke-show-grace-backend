@@ -968,11 +968,13 @@ def processar_audio_youtube(request, video_id=None):
 
         "fetch_pot": "always",
 
-    "extractor_args": {
-        "youtubepot-bgutilhttp": {
-            "base_url": "https://bgutil-ytdlp-pot-provider-0f67.onrender.com"
-        }
-    },
+        "extractor_args": {
+            "youtubepot-bgutilhttp": {
+                "base_url": [
+                    "https://bgutil-ytdlp-pot-provider-0f67.onrender.com"
+                ]
+            }
+        },
 
     "postprocessors": [
         {
@@ -2641,7 +2643,7 @@ def testar_youtube(request):
 
                 "extractor_args": {
                     "youtubepot-bgutilhttp": {
-                        "base_url": bgutil_url
+                        "base_url": [bgutil_url]
                     }
                 },
 
