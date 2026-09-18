@@ -2804,11 +2804,11 @@ def testar_youtube(request):
             "yt_dlp_js_runtimes": yt_dlp_js_runtimes,
 
             "yt_dlp_params_js_runtimes": (
-                yt_dlp_params_js_runtimes
+                repr(yt_dlp_params_js_runtimes)
             ),
 
             "yt_dlp_params_extractor_args": (
-                yt_dlp_params_extractor_args
+                repr(yt_dlp_params_extractor_args)
             ),
 
             "yt_dlp_sucesso": yt_dlp_sucesso,
