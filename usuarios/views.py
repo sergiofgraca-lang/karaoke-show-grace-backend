@@ -2437,7 +2437,9 @@ def audio_da_musica(
 
 def testar_youtube(request):
 
-    url = "https://www.youtube.com/watch?v=xjcz2PA-N8s"
+    video_id = request.GET.get("video_id", "xjcz2PA-N8s").strip()
+
+    url = f"https://www.youtube.com/watch?v={video_id}"
 
     try:
         headers = {
