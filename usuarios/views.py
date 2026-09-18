@@ -895,27 +895,43 @@ def processar_audio_youtube(request, video_id=None):
     # ============================================================
 
     # ============================================================
-    # QUICKJS WINDOWS
+    # QUICKJS
     # ============================================================
 
-    qjs_path = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)),
-        "runtime",
-        "qjs-win",
-        "qjs.exe"
+    BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+
+    if os.name == "nt":
+        # Windows
+        qjs_path = os.path.join(
+            BASE_DIR,
+            "runtime",
+            "qjs-win",
+            "qjs.exe"
+        )
+    else:
+        # Linux / Vercel
+        qjs_path = os.path.join(
+            BASE_DIR,
+            "runtime",
+            "qjs"
+        )
+
+    print(
+        "🧪 Sistema operacional:",
+        os.name
     )
 
     print(
-        "🧪 QJS Windows:",
+        "🧪 QJS configurado:",
         qjs_path
     )
 
     print(
-        "🧪 QJS Windows existe:",
+        "🧪 QJS existe:",
         os.path.isfile(qjs_path)
     )
-    ydl_opts = {
 
+    ydl_opts = {
         "format": (
             "bestaudio/best"
         ),
