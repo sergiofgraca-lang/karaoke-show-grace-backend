@@ -19,12 +19,7 @@ DEBUG = os.getenv("DEBUG", "False") == "True"
 
 DEBUG = True
 
-ALLOWED_HOSTS = [
-    "127.0.0.1",
-    "localhost",
-    ".vercel.app",
-    ".vercel.app",
-]
+
 
 
 # =========================
@@ -82,6 +77,7 @@ CORS_ALLOWED_ORIGINS = [
 # Certifique-se também de que o domínio do backend está nos ALLOWED_HOSTS
 ALLOWED_HOSTS = [
     ".vercel.app",
+    ".onrender.com",
     "localhost",
     "127.0.0.1",
 ]
