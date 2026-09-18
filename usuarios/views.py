@@ -2437,31 +2437,114 @@ def testar_youtube(request):
     url = "https://www.youtube.com/watch?v=xjcz2PA-N8s"
 
     try:
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/140.0.0.0 Safari/537.36"
+            ),
+            "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Accept": (
+                "text/html,application/xhtml+xml,application/xml;"
+                "q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
+            ),
+        }
+
         resposta = requests.get(
             url,
             timeout=20,
-            headers={
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/140.0.0.0 Safari/537.36"
-                ),
-                "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
-            },
+            headers=headers,
         )
 
         texto = resposta.text
+        texto_lower = texto.lower()
+
+        # ============================================================
+        # DIAGNÓSTICO QUICKJS
+        # ============================================================
+
+        base_dir = os.path.dirname(os.path.dirname(__file__))
+
+        if os.name == "nt":
+            qjs_path = os.path.join(
+                base_dir,
+                "runtime",
+                "qjs-win",
+                "qjs.exe"
+            )
+        else:
+            qjs_path = os.path.join(
+                base_dir,
+                "runtime",
+                "qjs"
+            )
+
+        qjs_existe = os.path.isfile(qjs_path)
+
+        qjs_tamanho = (
+            os.path.getsize(qjs_path)
+            if qjs_existe
+            else None
+        )
+
+        qjs_execucao = None
+        qjs_stdout = ""
+        qjs_stderr = ""
+
+        if qjs_existe:
+            try:
+                resultado_qjs = subprocess.run(
+                    [
+                        qjs_path,
+                        "-e",
+                        "console.log('QUICKJS_OK');"
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+
+                qjs_execucao = resultado_qjs.returncode
+                qjs_stdout = resultado_qjs.stdout[:500]
+                qjs_stderr = resultado_qjs.stderr[:500]
+
+            except Exception as erro_qjs:
+                qjs_execucao = "ERRO"
+                qjs_stderr = str(erro_qjs)
 
         return JsonResponse({
             "status": resposta.status_code,
             "tamanho": len(texto),
             "url_final": resposta.url,
+
             "server": resposta.headers.get("server"),
             "content_type": resposta.headers.get("content-type"),
-            "tem_bot": "bot" in texto.lower(),
-            "tem_captcha": "captcha" in texto.lower(),
-            "tem_consent": "consent" in texto.lower(),
-            "tem_signin": "sign in" in texto.lower(),
+            "content_encoding": resposta.headers.get("content-encoding"),
+            "cache_control": resposta.headers.get("cache-control"),
+
+            "tem_bot": "bot" in texto_lower,
+            "tem_captcha": "captcha" in texto_lower,
+            "tem_consent": "consent" in texto_lower,
+            "tem_signin": "sign in" in texto_lower,
+
+            "tem_ytcfg": "ytcfg" in texto_lower,
+            "tem_innertube": "innertube" in texto_lower,
+            "tem_player": "player" in texto_lower,
+            "tem_visionos": "visionos" in texto_lower,
+            "tem_web_embedded": "web_embedded" in texto_lower,
+
+            "user_agent_enviado": headers["User-Agent"],
+            "accept_language_enviado": headers["Accept-Language"],
+
+            # Diagnóstico QuickJS
+            "sistema_operacional": os.name,
+            "qjs_path": qjs_path,
+            "qjs_existe": qjs_existe,
+            "qjs_tamanho": qjs_tamanho,
+            "qjs_returncode": qjs_execucao,
+            "qjs_stdout": qjs_stdout,
+            "qjs_stderr": qjs_stderr,
+
             "inicio_resposta": texto[:1000],
         })
 
