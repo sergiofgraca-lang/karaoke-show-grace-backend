@@ -2423,3 +2423,49 @@ def audio_da_musica(
         },
         status=404
     )
+
+# ============================================================
+# DIAGNÓSTICO TEMPORÁRIO - ACESSO VERCEL -> YOUTUBE
+# ============================================================
+
+from django.http import JsonResponse
+import requests
+
+
+def testar_youtube(request):
+
+    url = "https://www.youtube.com/watch?v=xjcz2PA-N8s"
+
+    try:
+        resposta = requests.get(
+            url,
+            timeout=20,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/140.0.0.0 Safari/537.36"
+                ),
+                "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+            },
+        )
+
+        texto = resposta.text
+
+        return JsonResponse({
+            "status": resposta.status_code,
+            "tamanho": len(texto),
+            "url_final": resposta.url,
+            "server": resposta.headers.get("server"),
+            "content_type": resposta.headers.get("content-type"),
+            "tem_bot": "bot" in texto.lower(),
+            "tem_captcha": "captcha" in texto.lower(),
+            "tem_consent": "consent" in texto.lower(),
+            "tem_signin": "sign in" in texto.lower(),
+            "inicio_resposta": texto[:1000],
+        })
+
+    except Exception as e:
+        return JsonResponse({
+            "erro": str(e)
+        }, status=500)
