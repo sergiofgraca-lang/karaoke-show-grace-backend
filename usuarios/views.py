@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unicodedata
 
 import imageio_ffmpeg
@@ -2523,17 +2524,35 @@ def testar_youtube(request):
         bgutil_status = None
         bgutil_resposta = ""
         bgutil_erro = ""
+        bgutil_tempo_segundos = None
 
         try:
+            inicio_bgutil = time.perf_counter()
+
             resposta_bgutil = requests.get(
                 f"{bgutil_url}/ping",
-                timeout=10,
+                timeout=30,
+            )
+
+            fim_bgutil = time.perf_counter()
+
+            bgutil_tempo_segundos = round(
+                fim_bgutil - inicio_bgutil,
+                3
             )
 
             bgutil_status = resposta_bgutil.status_code
             bgutil_resposta = resposta_bgutil.text[:1000]
 
         except Exception as erro_bgutil:
+
+            fim_bgutil = time.perf_counter()
+
+            bgutil_tempo_segundos = round(
+                fim_bgutil - inicio_bgutil,
+                3
+            )
+
             bgutil_erro = str(erro_bgutil)
 
         # ============================================================
@@ -2566,6 +2585,7 @@ def testar_youtube(request):
             import yt_dlp
 
             yt_dlp_versao = yt_dlp.version.__version__
+
             yt_dlp_modulo = getattr(
                 yt_dlp,
                 "__file__",
@@ -2573,7 +2593,7 @@ def testar_youtube(request):
             )
 
             # --------------------------------------------------------
-            # Configuração do QuickJS
+            # CONFIGURAÇÃO DO QUICKJS
             # --------------------------------------------------------
 
             if qjs_existe:
@@ -2588,7 +2608,7 @@ def testar_youtube(request):
             yt_dlp_js_runtimes = js_runtimes
 
             # --------------------------------------------------------
-            # Pasta temporária
+            # PASTA TEMPORÁRIA
             # --------------------------------------------------------
 
             pasta_temp = tempfile.mkdtemp(
@@ -2601,7 +2621,7 @@ def testar_youtube(request):
             )
 
             # --------------------------------------------------------
-            # Configuração do yt-dlp
+            # CONFIGURAÇÃO DO YT-DLP
             # --------------------------------------------------------
 
             ydl_opts = {
@@ -2635,7 +2655,7 @@ def testar_youtube(request):
             }
 
             # --------------------------------------------------------
-            # Executar yt-dlp
+            # EXECUTAR YT-DLP
             # --------------------------------------------------------
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -2768,6 +2788,7 @@ def testar_youtube(request):
 
             "bgutil_url": bgutil_url,
             "bgutil_status": bgutil_status,
+            "bgutil_tempo_segundos": bgutil_tempo_segundos,
             "bgutil_resposta": bgutil_resposta,
             "bgutil_erro": bgutil_erro,
 
