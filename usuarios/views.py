@@ -14,6 +14,27 @@ from django.conf import settings
 from django.db.models import Count
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
+
+def limpar_texto(texto):
+    """
+    Limpa e normaliza textos recebidos do YouTube.
+    Mantém acentos e caracteres comuns, removendo
+    espaços desnecessários e caracteres de controle.
+    """
+
+    if texto is None:
+        return ""
+
+    texto = str(texto)
+
+    # Remove caracteres de controle
+    texto = re.sub(r"[\x00-\x1f\x7f]", "", texto)
+
+    # Normaliza espaços
+    texto = re.sub(r"\s+", " ", texto)
+
+    return texto.strip()
+
 from .models import Musica
 
 DIRETORIO_PLUGIN = os.path.dirname(os.path.dirname(__file__))
@@ -75,6 +96,195 @@ SUPABASE_KEY = (
 
 NOME_DO_BUCKET = "audios"  # <--- CORRIGIDO PARA O SEU BUCKET 'audios'
 # =========================================================================
+def supabase_configurado():
+    """
+    Verifica se o Supabase está configurado corretamente.
+    """
+
+    return bool(
+        SUPABASE_URL
+        and SUPABASE_KEY
+        and NOME_DO_BUCKET
+    )
+
+
+
+
+def eh_url_supabase(url):
+    """
+    Verifica se uma URL pertence ao Storage do Supabase.
+    """
+    if not url:
+        return False
+
+    url = str(url).strip()
+
+    return (
+        "supabase.co/storage/" in url
+        or "/storage/v1/object/" in url
+    )
+
+
+def audio_supabase_existe(video_id):
+    """
+    Verifica se o arquivo MP3 existe no bucket privado do Supabase.
+    """
+    if not supabase_configurado():
+        print("❌ Supabase não está configurado.")
+        return False
+
+    video_id = str(video_id).strip()
+
+    if not video_id:
+        return False
+
+    nome_arquivo = f"{video_id}.mp3"
+
+    url = (
+        f"{SUPABASE_URL}/storage/v1/object/"
+        f"{NOME_DO_BUCKET}/{nome_arquivo}"
+    )
+
+    headers = {
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "apikey": SUPABASE_KEY,
+    }
+
+    try:
+        resposta = requests.head(
+            url,
+            headers=headers,
+            timeout=15,
+        )
+
+        print(
+            "🔎 Verificação do áudio no Supabase:",
+            resposta.status_code,
+            nome_arquivo
+        )
+
+        if resposta.status_code == 200:
+            return True
+
+        # Alguns ambientes podem não aceitar HEAD.
+        # Nesse caso fazemos uma consulta GET apenas para
+        # confirmar a existência do arquivo.
+        if resposta.status_code in (400, 405):
+            resposta = requests.get(
+                url,
+                headers=headers,
+                timeout=15,
+                stream=True,
+            )
+
+            print(
+                "🔎 Verificação GET do áudio:",
+                resposta.status_code,
+                nome_arquivo
+            )
+
+            return resposta.status_code == 200
+
+        return False
+
+    except Exception as e:
+        print(
+            "❌ Erro verificando áudio no Supabase:",
+            repr(e)
+        )
+        return False
+
+def gerar_url_assinada_supabase(video_id, segundos=3600):
+    """
+    Gera uma URL temporária para um arquivo privado
+    armazenado no bucket do Supabase.
+    """
+
+    if not supabase_configurado():
+        print("❌ Supabase não está configurado.")
+        return None
+
+    video_id = str(video_id).strip()
+
+    if not video_id:
+        print("❌ Video ID vazio.")
+        return None
+
+    nome_arquivo = f"{video_id}.mp3"
+
+    url = (
+        f"{SUPABASE_URL}/storage/v1/object/sign/"
+        f"{NOME_DO_BUCKET}/{nome_arquivo}"
+    )
+
+    payload = {
+        "expiresIn": segundos
+    }
+
+    headers = {
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "apikey": SUPABASE_KEY,
+        "Content-Type": "application/json",
+    }
+
+    try:
+        resposta = requests.post(
+            url,
+            json=payload,
+            headers=headers,
+            timeout=30,
+        )
+
+        print(
+            "🔐 Supabase gerar URL assinada:",
+            resposta.status_code
+        )
+
+        if resposta.status_code not in (200, 201):
+            print(
+                "❌ Erro ao gerar URL assinada:",
+                resposta.text[:500]
+            )
+            return None
+
+        dados = resposta.json()
+
+        signed_url = (
+            dados.get("signedURL")
+            or dados.get("signedUrl")
+            or dados.get("signed_url")
+        )
+
+        if not signed_url:
+            print("❌ Supabase não retornou signedURL.")
+            print("📦 Resposta:", dados)
+            return None
+
+        if signed_url.startswith("/"):
+            signed_url = (
+                f"{SUPABASE_URL}/storage/v1"
+                f"{signed_url}"
+            )
+
+        elif signed_url.startswith("?"):
+            signed_url = (
+                f"{SUPABASE_URL}/storage/v1/object/sign/"
+                f"{NOME_DO_BUCKET}/{nome_arquivo}"
+                f"{signed_url}"
+            )
+
+        return signed_url
+
+    except Exception as e:
+        print(
+            "❌ Erro ao gerar URL assinada:",
+            repr(e)
+        )
+        return None
+
+
+
+
 @csrf_exempt
 def teste_bgutil(request):
     """
@@ -98,6 +308,34 @@ def teste_bgutil(request):
         "etapa": "iniciando",
     }
 
+    # Teste direto de conectividade com o bgutil Render
+    resultado["teste_bgutil_ping"] = {
+        "url": "https://bgutil-ytdlp-pot-provider-0f67.onrender.com/ping",
+        "ok": False,
+        "status": None,
+        "resposta": "",
+        "erro": "",
+    }
+
+    try:
+        import requests
+
+        resposta_ping = requests.get(
+            "https://bgutil-ytdlp-pot-provider-0f67.onrender.com/ping",
+            timeout=10,
+        )
+
+        resultado["teste_bgutil_ping"]["status"] = resposta_ping.status_code
+        resultado["teste_bgutil_ping"]["resposta"] = resposta_ping.text[:1000]
+        resultado["teste_bgutil_ping"]["ok"] = (
+            resposta_ping.status_code == 200
+        )
+
+    except Exception as erro_ping:
+        resultado["teste_bgutil_ping"]["erro"] = (
+            f"{type(erro_ping).__name__}: {erro_ping}"
+        )
+
     try:
         qjs_path = os.path.join(
             os.path.dirname(os.path.dirname(__file__)),
@@ -115,7 +353,7 @@ def teste_bgutil(request):
             "qjs_executavel": os.access(qjs_path, os.X_OK),
         }
 
-        
+
         resultado["runtime_candidatos"] = {
             caminho: {
                 "existe": os.path.exists(caminho),
@@ -180,10 +418,10 @@ def teste_bgutil(request):
 
         ydl_opts = {
             "quiet": False,
-            "no_warnings": False,
-            "nocheckcertificate": True,
+                "no_warnings": False,
+                "nocheckcertificate": True,
 
-            "fetch_pot": "always",
+                "fetch_pot": "always",
 
             "js_runtimes": {
                 "quickjs": {
@@ -202,7 +440,7 @@ def teste_bgutil(request):
         }
 
         resultado["ydl_opts"] = {
-            "fetch_pot": "always",
+                "fetch_pot": "always",
             "js_runtimes": {
                 "quickjs": {
                     "path": qjs_path,
@@ -266,6 +504,25 @@ def teste_bgutil(request):
         })
 
     return JsonResponse(resultado)
+
+def validar_video_id(video_id):
+    """
+    Valida o ID de um vídeo do YouTube.
+    IDs normais do YouTube possuem exatamente 11 caracteres.
+    """
+
+    if not video_id:
+        return False
+
+    video_id = str(video_id).strip()
+
+    return bool(
+        re.fullmatch(
+            r"[A-Za-z0-9_-]{11}",
+            video_id
+        )
+    )
+
 
 @csrf_exempt
 def processar_audio_youtube(request, video_id=None):
@@ -637,28 +894,58 @@ def processar_audio_youtube(request, video_id=None):
     # 14. CONFIGURAÇÃO DO YT-DLP
     # ============================================================
 
+    # ============================================================
+    # QUICKJS WINDOWS
+    # ============================================================
+
+    qjs_path = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)),
+        "runtime",
+        "qjs-win",
+        "qjs.exe"
+    )
+
+    print(
+        "🧪 QJS Windows:",
+        qjs_path
+    )
+
+    print(
+        "🧪 QJS Windows existe:",
+        os.path.isfile(qjs_path)
+    )
     ydl_opts = {
 
-    "format": (
-        "bestaudio/best"
-    ),
+        "format": (
+            "bestaudio/best"
+        ),
 
-    "outtmpl": os.path.join(
-        pasta_temporaria,
-        "%(id)s.%(ext)s"
-    ),
+        "outtmpl": os.path.join(
+            pasta_temporaria,
+            "%(id)s.%(ext)s"
+        ),
 
-    "noplaylist": True,
+        "noplaylist": True,
 
-    "quiet": False,
+        "js_runtimes": (
+            {
+                "quickjs": {
+                    "path": qjs_path
+                }
+            }
+            if os.path.isfile(qjs_path)
+            else {}
+        ),
 
-    "no_warnings": False,
+        "quiet": False,
 
-    "nocheckcertificate": True,
+        "no_warnings": False,
 
-    "ffmpeg_location": imageio_ffmpeg.get_ffmpeg_exe(),
+        "nocheckcertificate": True,
 
-    "fetch_pot": "always",
+        "ffmpeg_location": imageio_ffmpeg.get_ffmpeg_exe(),
+
+        "fetch_pot": "always",
 
     "extractor_args": {
         "youtubepot-bgutilhttp": {
@@ -688,11 +975,8 @@ def processar_audio_youtube(request, video_id=None):
         print("🧪 Node encontrado:", shutil.which("node"))
         print("🧪 Deno encontrado:", shutil.which("deno"))
 
-        qjs_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "runtime", "qjs")
-
-        print("🧪 QJS caminho esperado:", qjs_path)
-        print("🧪 QJS existe:", os.path.exists(qjs_path))
-        print("🧪 QJS executável:", os.access(qjs_path, os.X_OK))
+        print("🧪 QJS configurado:", qjs_path)
+        print("🧪 QJS existe:", os.path.isfile(qjs_path))
 
         print(
             "⬇️ Baixando áudio do YouTube..."
@@ -1784,7 +2068,7 @@ def audio_da_musica(
     # VALIDAR VIDEO ID
     # --------------------------------------------------------
 
-    
+
 
     if not validar_video_id(
     video_id
@@ -2123,4 +2407,3 @@ def audio_da_musica(
         },
         status=404
     )
-
