@@ -3,17 +3,21 @@ import os
 import re
 import shutil
 import subprocess
-import unicodedata
-import yt_dlp
 import sys
+import tempfile
+import unicodedata
+
 import imageio_ffmpeg
-from yt_dlp.globals import plugin_dirs
-from yt_dlp.plugins import load_all_plugins
 import requests
+import yt_dlp
+
 from django.conf import settings
 from django.db.models import Count
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
+
+from yt_dlp.globals import plugin_dirs
+from yt_dlp.plugins import load_all_plugins
 
 def limpar_texto(texto):
     """
@@ -2428,10 +2432,6 @@ def audio_da_musica(
 # DIAGNÓSTICO TEMPORÁRIO - ACESSO VERCEL -> YOUTUBE
 # ============================================================
 
-from django.http import JsonResponse
-import requests
-
-
 def testar_youtube(request):
 
     url = "https://www.youtube.com/watch?v=xjcz2PA-N8s"
@@ -2512,15 +2512,227 @@ def testar_youtube(request):
                 qjs_execucao = "ERRO"
                 qjs_stderr = str(erro_qjs)
 
+        # ============================================================
+        # DIAGNÓSTICO BGUTIL
+        # ============================================================
+
+        bgutil_url = (
+            "https://bgutil-ytdlp-pot-provider-0f67.onrender.com"
+        )
+
+        bgutil_status = None
+        bgutil_resposta = ""
+        bgutil_erro = ""
+
+        try:
+            resposta_bgutil = requests.get(
+                f"{bgutil_url}/ping",
+                timeout=10,
+            )
+
+            bgutil_status = resposta_bgutil.status_code
+            bgutil_resposta = resposta_bgutil.text[:1000]
+
+        except Exception as erro_bgutil:
+            bgutil_erro = str(erro_bgutil)
+
+        # ============================================================
+        # DIAGNÓSTICO YT-DLP
+        # ============================================================
+
+        yt_dlp_versao = None
+        yt_dlp_modulo = None
+        yt_dlp_sucesso = False
+
+        yt_dlp_erro_tipo = None
+        yt_dlp_erro = ""
+
+        yt_dlp_js_runtimes = {}
+        yt_dlp_params_js_runtimes = None
+        yt_dlp_params_extractor_args = None
+
+        video_id = None
+        titulo = None
+        ext = None
+        formato = None
+        formato_id = None
+        duracao = None
+
+        pasta_temp = None
+        arquivos_gerados = []
+        detalhes_arquivos = []
+
+        try:
+            import yt_dlp
+
+            yt_dlp_versao = yt_dlp.version.__version__
+            yt_dlp_modulo = getattr(
+                yt_dlp,
+                "__file__",
+                None
+            )
+
+            # --------------------------------------------------------
+            # Configuração do QuickJS
+            # --------------------------------------------------------
+
+            if qjs_existe:
+                js_runtimes = {
+                    "quickjs": {
+                        "path": qjs_path
+                    }
+                }
+            else:
+                js_runtimes = {}
+
+            yt_dlp_js_runtimes = js_runtimes
+
+            # --------------------------------------------------------
+            # Pasta temporária
+            # --------------------------------------------------------
+
+            pasta_temp = tempfile.mkdtemp(
+                prefix="yt_dlp_diag_"
+            )
+
+            arquivo_saida = os.path.join(
+                pasta_temp,
+                "%(id)s.%(ext)s"
+            )
+
+            # --------------------------------------------------------
+            # Configuração do yt-dlp
+            # --------------------------------------------------------
+
+            ydl_opts = {
+                "format": "bestaudio/best",
+
+                "outtmpl": arquivo_saida,
+
+                "noplaylist": True,
+
+                "quiet": False,
+
+                "no_warnings": False,
+
+                "js_runtimes": js_runtimes,
+
+                "fetch_pot": "always",
+
+                "extractor_args": {
+                    "youtubepot-bgutilhttp": {
+                        "base_url": bgutil_url
+                    }
+                },
+
+                "postprocessors": [
+                    {
+                        "key": "FFmpegExtractAudio",
+                        "preferredcodec": "mp3",
+                        "preferredquality": "192",
+                    }
+                ],
+            }
+
+            # --------------------------------------------------------
+            # Executar yt-dlp
+            # --------------------------------------------------------
+
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+
+                yt_dlp_params_js_runtimes = (
+                    ydl.params.get("js_runtimes")
+                )
+
+                yt_dlp_params_extractor_args = (
+                    ydl.params.get("extractor_args")
+                )
+
+                info = ydl.extract_info(
+                    url,
+                    download=True
+                )
+
+                yt_dlp_sucesso = True
+
+                video_id = info.get("id")
+                titulo = info.get("title")
+                ext = info.get("ext")
+                formato = info.get("format")
+                formato_id = info.get("format_id")
+                duracao = info.get("duration")
+
+        except Exception as erro_ytdlp:
+
+            yt_dlp_sucesso = False
+
+            yt_dlp_erro_tipo = type(
+                erro_ytdlp
+            ).__name__
+
+            yt_dlp_erro = str(
+                erro_ytdlp
+            )[:5000]
+
+        # ============================================================
+        # VERIFICAR ARQUIVOS GERADOS
+        # ============================================================
+
+        if pasta_temp:
+
+            try:
+                arquivos_gerados = os.listdir(
+                    pasta_temp
+                )
+
+                for nome in arquivos_gerados:
+
+                    caminho = os.path.join(
+                        pasta_temp,
+                        nome
+                    )
+
+                    if os.path.isfile(caminho):
+
+                        detalhes_arquivos.append({
+                            "nome": nome,
+                            "tamanho": os.path.getsize(
+                                caminho
+                            ),
+                        })
+
+            except Exception as erro_arquivos:
+
+                detalhes_arquivos = [
+                    {
+                        "erro": str(
+                            erro_arquivos
+                        )
+                    }
+                ]
+
+        # ============================================================
+        # RESPOSTA FINAL DO DIAGNÓSTICO
+        # ============================================================
+
         return JsonResponse({
+
+            # --------------------------------------------------------
+            # HTTP YOUTUBE
+            # --------------------------------------------------------
+
             "status": resposta.status_code,
             "tamanho": len(texto),
             "url_final": resposta.url,
 
             "server": resposta.headers.get("server"),
             "content_type": resposta.headers.get("content-type"),
-            "content_encoding": resposta.headers.get("content-encoding"),
-            "cache_control": resposta.headers.get("cache-control"),
+            "content_encoding": resposta.headers.get(
+                "content-encoding"
+            ),
+            "cache_control": resposta.headers.get(
+                "cache-control"
+            ),
 
             "tem_bot": "bot" in texto_lower,
             "tem_captcha": "captcha" in texto_lower,
@@ -2534,9 +2746,14 @@ def testar_youtube(request):
             "tem_web_embedded": "web_embedded" in texto_lower,
 
             "user_agent_enviado": headers["User-Agent"],
-            "accept_language_enviado": headers["Accept-Language"],
+            "accept_language_enviado": headers[
+                "Accept-Language"
+            ],
 
-            # Diagnóstico QuickJS
+            # --------------------------------------------------------
+            # QUICKJS
+            # --------------------------------------------------------
+
             "sistema_operacional": os.name,
             "qjs_path": qjs_path,
             "qjs_existe": qjs_existe,
@@ -2545,10 +2762,65 @@ def testar_youtube(request):
             "qjs_stdout": qjs_stdout,
             "qjs_stderr": qjs_stderr,
 
+            # --------------------------------------------------------
+            # BGUTIL
+            # --------------------------------------------------------
+
+            "bgutil_url": bgutil_url,
+            "bgutil_status": bgutil_status,
+            "bgutil_resposta": bgutil_resposta,
+            "bgutil_erro": bgutil_erro,
+
+            # --------------------------------------------------------
+            # YT-DLP
+            # --------------------------------------------------------
+
+            "yt_dlp_versao": yt_dlp_versao,
+            "yt_dlp_modulo": yt_dlp_modulo,
+
+            "yt_dlp_js_runtimes": yt_dlp_js_runtimes,
+
+            "yt_dlp_params_js_runtimes": (
+                yt_dlp_params_js_runtimes
+            ),
+
+            "yt_dlp_params_extractor_args": (
+                yt_dlp_params_extractor_args
+            ),
+
+            "yt_dlp_sucesso": yt_dlp_sucesso,
+
+            "yt_dlp_erro_tipo": yt_dlp_erro_tipo,
+            "yt_dlp_erro": yt_dlp_erro,
+
+            # --------------------------------------------------------
+            # INFORMAÇÕES EXTRAÍDAS
+            # --------------------------------------------------------
+
+            "video_id": video_id,
+            "titulo": titulo,
+            "ext": ext,
+            "formato": formato,
+            "formato_id": formato_id,
+            "duracao": duracao,
+
+            # --------------------------------------------------------
+            # ARQUIVOS
+            # --------------------------------------------------------
+
+            "pasta_temp": pasta_temp,
+            "arquivos_gerados": arquivos_gerados,
+            "detalhes_arquivos": detalhes_arquivos,
+
+            # --------------------------------------------------------
+            # INÍCIO DA RESPOSTA DO YOUTUBE
+            # --------------------------------------------------------
+
             "inicio_resposta": texto[:1000],
         })
 
     except Exception as e:
+
         return JsonResponse({
             "erro": str(e)
         }, status=500)
