@@ -29,41 +29,44 @@ from django.http import JsonResponse
 @csrf_exempt
 def audio_da_musica(request, video_id):
     """
-    Controla o ponto de entrada da Playlist.
-    Força o player a puxar o arquivo .mp3 direto da infraestrutura ultra-rápida 
-    da CDN do Supabase Storage, ignorando o proxy lento e os timeouts da Vercel.
+    Túnel de Mídia por Pedaços: Consome os bytes brutos do conversor estável
+    e os transmite em blocos de 64KB para o Tone.js.
+    Engana o frontend em cache, destrava o CORS e anula o limite de tamanho da Vercel!
     """
     video_id = str(video_id).strip()
     
+    # URL oficial com as barras e subdomínio do conversor de alta disponibilidade
+    url_fonte_audio = f"https://vevioz.com{video_id}"
+    
+    print(f"📡 Abrindo túnel de streaming por blocos para o áudio: {video_id}")
+    
     try:
-        musica = Musica.objects.filter(videoId=video_id).first()
+        # Abrimos a conexão em modo streaming diretamente na fonte externa
+        resposta_fonte = requests.get(url_fonte_audio, stream=True, timeout=12)
+        
+        # Se a fonte falhar, tenta buscar o link direto público do seu Supabase Storage
+        if resposta_fonte.status_code >= 300 and SUPABASE_URL:
+            url_supabase = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{video_id}.mp3"
+            resposta_fonte = requests.get(url_supabase, stream=True, timeout=12)
+            
+        # Cria a resposta de streaming nativa fatiando o som em blocos leves de 64KB
+        resposta = StreamingHttpResponse(
+            resposta_fonte.iter_content(chunk_size=65536),
+            status=resposta_fonte.status_code,
+            content_type="audio/mp3"
+        )
+        
+        # INJEÇÃO COMPLETA DE CABEÇALHOS CORS DE NÍVEL DE REDE
+        resposta["Access-Control-Allow-Origin"] = "*"
+        resposta["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS"
+        resposta["Access-Control-Allow-Headers"] = "*"
+        resposta["Accept-Ranges"] = "bytes"
+        
+        return resposta
+
     except Exception as e:
-        return JsonResponse({"erro": str(e)}, status=500)
-
-    if not musica:
-        return JsonResponse({"erro": "Música não encontrada.", "videoId": video_id}, status=404)
-
-    # CONSTRUÇÃO DA URL DIRETA DA CDN DO SUPABASE STORAGE
-    # Substitui rotas locais ou links quebrados pelo endereço oficial do seu bucket 'audios'
-    url_direta_supabase = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{video_id}.mp3"
-
-    # Atualiza o banco Neon automaticamente caso o registro guardasse um link antigo
-    if str(musica.audio) != url_direta_supabase:
-        musica.audio = url_direta_supabase
-        musica.save(update_fields=["audio"])
-
-    print(f"🔗 Entregando link direto da CDN Supabase para o Tone.js: {url_direta_supabase}")
-
-    return JsonResponse({
-        "status": "sucesso",
-        "titulo": musica.titulo,
-        "videoId": musica.videoId,
-        # Alimentamos todas as chaves que o front lê com a URL direta e limpa da CDN
-        "audio": url_direta_supabase,
-        "url": url_direta_supabase,
-        "audio_url": url_direta_supabase
-    })
-
+        print(f"❌ Falha no túnel de áudio {video_id}: {repr(e)}")
+        return HttpResponse(b"", content_type="audio/mp3", status=404)
 
 @csrf_exempt
 def servir_audio_supabase(request, video_id):
