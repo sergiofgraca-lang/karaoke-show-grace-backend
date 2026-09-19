@@ -1882,21 +1882,31 @@ def servir_audio_supabase(request, video_id):
 
 from django.shortcuts import redirect
 
+from django.http import HttpResponseRedirect
+
 def servir_audio_supabase(request, video_id):
     """
     Caso o frontend antigo em cache chame esta rota de proxy,
-    redirecionamos o navegador instantaneamente para a URL pública e
-    direta da CDN do Supabase Storage, evitando o timeout da Vercel.
+    redirecionamos o navegador para a URL pública do Supabase Storage
+    injetando os cabeçalhos de liberação de CORS universais (*).
     """
     video_id = str(video_id).strip()
     
     # Monta a URL pública e direta do seu arquivo dentro do bucket 'audios'
     url_direta_supabase = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{video_id}.mp3"
     
-    print(f"🔀 Redirecionando proxy antigo para CDN Supabase: {url_direta_supabase}")
+    print(f"🔀 Redirecionando proxy com injeção de CORS para CDN: {url_direta_supabase}")
     
-    # Retorna um HTTP 302 Redirect. O Tone.js segue isso automaticamente e toca o som!
-    return redirect(url_direta_supabase)
+    # Criamos a resposta de redirecionamento HTTP 302 manual
+    resposta = HttpResponseRedirect(url_direta_supabase)
+    
+    # INJEÇÃO SEGURO ANTI-BLOQUEIO DE CORS: Permite que o Tone.js processe o áudio binário
+    resposta["Access-Control-Allow-Origin"] = "*"
+    resposta["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS"
+    resposta["Access-Control-Allow-Headers"] = "*"
+    
+    return resposta
+
 
     # --------------------------------------------------------
     # BUSCAR MÚSICA
