@@ -310,7 +310,7 @@ def teste_bgutil(request):
     import yt_dlp
 
     video_id = "8cr4wfJuTNw"
-    url = f"https://youtube.com{video_id}"
+    url = f"https://www.youtube.com/watch?v={video_id}"
 
     inicio = time.perf_counter()
 
@@ -320,8 +320,9 @@ def teste_bgutil(request):
         "etapa": "iniciando",
     }
 
+    # Teste direto de conectividade com o bgutil Render
     resultado["teste_bgutil_ping"] = {
-        "url": "https://onrender.com",
+        "url": "https://bgutil-ytdlp-pot-provider-0f67.onrender.com/ping",
         "ok": False,
         "status": None,
         "resposta": "",
@@ -332,7 +333,7 @@ def teste_bgutil(request):
         import requests
 
         resposta_ping = requests.get(
-            "https://onrender.com",
+            "https://bgutil-ytdlp-pot-provider-0f67.onrender.com/ping",
             timeout=10,
         )
 
@@ -346,167 +347,175 @@ def teste_bgutil(request):
         resultado["teste_bgutil_ping"]["erro"] = (
             f"{type(erro_ping).__name__}: {erro_ping}"
         )
-        
-    return JsonResponse(resultado)
+
+    try:
+        qjs_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "runtime",
+            "qjs",
+        )
+
+        resultado["ambiente"] = {
+            "python": os.sys.version,
+            "yt_dlp": getattr(yt_dlp, "__version__", "desconhecido"),
+            "node": shutil.which("node"),
+            "deno": shutil.which("deno"),
+            "qjs_path": qjs_path,
+            "qjs_existe": os.path.exists(qjs_path),
+            "qjs_executavel": os.access(qjs_path, os.X_OK),
+        }
 
 
-@csrf_exempt
-def testar_youtube(request):
-    """
-    Diagnóstico auxiliar para testar o estado da conexão.
-    """
-    return JsonResponse({"status": "Ativo", "timestamp": time.time()})
+        resultado["runtime_candidatos"] = {
+            caminho: {
+                "existe": os.path.exists(caminho),
+                "executavel": os.path.isfile(caminho) and os.access(caminho, os.X_OK),
+            }
+            for caminho in [
+                "/usr/bin/node",
+                "/usr/local/bin/node",
+                "/opt/bin/node",
+                "/var/task/node",
+                "/var/task/nodejs/node",
+                "/usr/bin/deno",
+                "/usr/local/bin/deno",
+                "/opt/bin/deno",
+                "/var/task/deno",
+                "/usr/bin/bun",
+                "/usr/local/bin/bun",
+                "/opt/bin/bun",
+                "/var/task/bun",
+                "/usr/bin/qjs",
+                "/usr/local/bin/qjs",
+                "/opt/bin/qjs",
+            ]
+        }
 
+        # Teste real de execução do QuickJS
+        resultado["teste_qjs_execucao"] = {
+            "tentado": False,
+            "ok": False,
+            "saida": "",
+            "erro": "",
+        }
 
-@csrf_exempt
-def processar_audio_youtube(request, video_id=None):
-    """
-    View unificada que aceita POST (Criar) e GET (Carregar da Playlist).
-    """
-    if request.method not in ["POST", "GET"]:
-        return JsonResponse({"erro": "Método inválido. Use POST ou GET."}, status=405)
+        if os.path.isfile(qjs_path) and os.access(qjs_path, os.X_OK):
+            resultado["teste_qjs_execucao"]["tentado"] = True
 
-    if not video_id:
-        if request.content_type == "application/json":
             try:
-                dados = json.loads(request.body)
-                video_id = dados.get("videoId")
-                titulo = dados.get("titulo")
-                cantor = dados.get("cantor", "")
-            except json.JSONDecodeError:
-                return JsonResponse({"erro": "JSON inválido."}, status=400)
-        else:
-            video_id = request.POST.get("videoId")
-            titulo = request.POST.get("titulo")
-            cantor = request.POST.get("cantor", "")
-    else:
-        titulo = request.GET.get("titulo", "Karaoke")
-        cantor = request.GET.get("cantor", "")
+                teste_qjs = subprocess.run(
+                    [qjs_path, "-e", "print(1 + 2)"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
 
-    if not video_id:
-        return JsonResponse({"erro": "O campo videoId é obrigatório."}, status=400)
+                resultado["teste_qjs_execucao"]["ok"] = (
+                    teste_qjs.returncode == 0
+                    and teste_qjs.stdout.strip() == "3"
+                )
+                resultado["teste_qjs_execucao"]["saida"] = (
+                    teste_qjs.stdout.strip()
+                )
+                resultado["teste_qjs_execucao"]["erro"] = (
+                    teste_qjs.stderr.strip()
+                )
 
-    titulo_limpo = limpar_texto(titulo)
-    cantor_limpo = limpar_texto(cantor)
+            except Exception as erro_qjs:
+                resultado["teste_qjs_execucao"]["erro"] = (
+                    f"{type(erro_qjs).__name__}: {erro_qjs}"
+                )
 
-    # O player antigo busca a rota de proxy do próprio Django
-    url_proxy_obrigatoria = f"https://karaoke-show-grace-backend.vercel.app/api/audio-arquivo/{video_id}/"
+        resultado["etapa"] = "criando_youtube_dl"
 
-    musica_existente = Musica.objects.filter(videoId=video_id).first()
-    if musica_existente:
-        return JsonResponse({
-            "status": "sucesso",
-            "id": musica_existente.id,
-            "titulo": musica_existente.titulo,
-            "videoId": musica_existente.videoId,
-            "cantor": musica_existente.cantor,
-            "audio": url_proxy_obrigatoria,
-            "url": url_proxy_obrigatoria,
-            "audio_url": url_proxy_obrigatoria
+        ydl_opts = {
+            "quiet": False,
+                "no_warnings": False,
+                "nocheckcertificate": True,
+
+                "fetch_pot": "always",
+
+            "js_runtimes": {
+                "quickjs": {
+                    "path": qjs_path,
+                }
+            },
+
+            "extractor_args": {
+                "youtubepot-bgutilhttp": {
+                    "base_url": (
+                        "https://bgutil-ytdlp-pot-provider-0f67"
+                        ".onrender.com"
+                    )
+                }
+            },
+        }
+
+        resultado["ydl_opts"] = {
+                "fetch_pot": "always",
+            "js_runtimes": {
+                "quickjs": {
+                    "path": qjs_path,
+                }
+            },
+            "bgutil_base_url": (
+                "https://bgutil-ytdlp-pot-provider-0f67"
+                ".onrender.com"
+            ),
+        }
+
+        resultado["etapa"] = "extraindo_info"
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(
+                url,
+                download=False,
+            )
+
+        formatos = info.get("formats") or []
+
+        formatos_audio = []
+
+        for formato in formatos:
+            if formato.get("acodec") not in (None, "none"):
+                formatos_audio.append({
+                    "format_id": formato.get("format_id"),
+                    "ext": formato.get("ext"),
+                    "acodec": formato.get("acodec"),
+                    "abr": formato.get("abr"),
+                    "tbr": formato.get("tbr"),
+                    "vcodec": formato.get("vcodec"),
+                })
+
+        resultado.update({
+            "ok": True,
+            "etapa": "extracao_concluida",
+            "tempo_segundos": round(
+                time.perf_counter() - inicio,
+                3,
+            ),
+            "titulo": info.get("title"),
+            "uploader": info.get("uploader"),
+            "extractor": info.get("extractor"),
+            "extractor_key": info.get("extractor_key"),
+            "formatos_total": len(formatos),
+            "formatos_audio": formatos_audio,
         })
 
-    try:
-        nova_musica = Musica.objects.create(
-            titulo=titulo_limpo,
-            videoId=video_id,
-            cantor=cantor_limpo,
-            audio=url_proxy_obrigatoria,
-        )
     except Exception as e:
-        return JsonResponse({"erro": f"Erro de gravação: {str(e)}"}, status=500)
 
-    return JsonResponse({
-        "status": "sucesso",
-        "id": nova_musica.id,
-        "titulo": nova_musica.titulo,
-        "videoId": nova_musica.videoId,
-        "cantor": nova_musica.cantor,
-        "audio": url_proxy_obrigatoria,
-        "url": url_proxy_obrigatoria,
-        "audio_url": url_proxy_obrigatoria
-    }, status=201)
+        resultado.update({
+            "ok": False,
+            "etapa": "erro_extracao",
+            "tempo_segundos": round(
+                time.perf_counter() - inicio,
+                3,
+            ),
+            "erro_tipo": type(e).__name__,
+            "erro": str(e),
+        })
 
-
-from django.http import StreamingHttpResponse
-
-@csrf_exempt
-def servir_audio_supabase(request, video_id):
-    """
-    O MÁGICO DE REDE: Usa o seu yt_dlp com o plugin BGUTIL ativo para descriptografar 
-    o link de stream original e injeta em tempo real para o Tone.js como pacotes leves.
-    Elimina 100% o erro do buffer, as travas de CORS e as falhas do conversor!
-    """
-    video_id = str(video_id).strip()
-    url_youtube = f"https://youtube.com{video_id}"
-    
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'quiet': True,
-        'no_warnings': True,
-        'skip_download': True,
-    }
-    
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url_youtube, download=False)
-            stream_url = info.get('url', '')
-            
-            if stream_url:
-                # Dispara o streaming conectando no Google Video CDN
-                resposta_stream = requests.get(stream_url, stream=True, timeout=15)
-                
-                # Transmite blocos contínuos de 16KB para o Tone.js (Bula o limite da Vercel)
-                resposta = StreamingHttpResponse(
-                    resposta_stream.iter_content(chunk_size=16384),
-                    status=resposta_stream.status_code,
-                    content_type="audio/mp3"
-                )
-                
-                # Injeção para o navegador aceitar a leitura do áudio
-                resposta["Access-Control-Allow-Origin"] = "*"
-                resposta["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS"
-                resposta["Access-Control-Allow-Headers"] = "*"
-                resposta["Accept-Ranges"] = "bytes"
-                
-                return resposta
-    except Exception as e:
-        print(f"❌ Falha no streaming em tempo real: {repr(e)}")
-        
-    # Último desvio se a extração falhar por IP banido
-    from django.shortcuts import redirect
-    return redirect(f"https://vevioz.com{video_id}")
-
-
-@csrf_exempt
-def listar_musicas(request):
-    musicas = Musica.objects.all().order_index("-id")
-    lista = [{
-        "id": m.id, "titulo": m.titulo, "videoId": m.videoId, "cantor": m.cantor, "audio": m.audio
-    } for m in musicas]
-    return JsonResponse(lista, safe=False)
-
-@csrf_exempt
-def deletar_musica(request, id):
-    try:
-        m = Musica.objects.get(id=id)
-        m.delete()
-        return JsonResponse({"status": "sucesso"})
-    except Musica.DoesNotExist:
-        return JsonResponse({"erro": "Nao encontrado"}, status=404)
-
-@csrf_exempt
-def ranking(request):
-    dados = Musica.objects.values("cantor").annotate(total=Count("id")).order_by("-total")
-    return JsonResponse(list(dados), safe=False)
-
-@csrf_exempt
-def listar_audios(request):
-    return JsonResponse({"status": "Disponivel"})
-
-@csrf_exempt
-def associar_audio(request):
-    return JsonResponse({"status": "Sucesso"})
-
+    return JsonResponse(resultado)
 
 def validar_video_id(video_id):
     """
@@ -1791,25 +1800,28 @@ def encontrar_audio(video_id):
 
 def servir_audio_supabase(request, video_id):
     """
-    Entrega o MP3 privado do Supabase através do Django.
+    Entrega uma URL pública e temporária diretamente do Supabase Storage,
+    eliminando o gargalo de payload e os timeouts de 10 segundos da Vercel.
     """
-
-    if request.method != "GET":
-        return JsonResponse(
-            {"erro": "Método não permitido."},
-            status=405
-        )
-
-    if not video_id:
-        return JsonResponse(
-            {"erro": "videoId não informado."},
-            status=400
-        )
-
-    print(
-        "🎧 Servindo áudio pelo Django:",
-        video_id
-    )
+    video_id = str(video_id).strip()
+    
+    # Tentamos usar a função utilitária que você já tem no topo do arquivo
+    # para gerar um link de acesso assinado válido por 1 hora (3600 segundos)
+    url_assinada = gerar_url_assinada_supabase(video_id, segundos=3600)
+    
+    if url_assinada:
+        print(f"🔐 URL assinada gerada com sucesso! Redirecionando Tone.js: {url_assinada[:80]}...")
+        return redirect(url_assinada)
+        
+    # Fallback 1: Caso o token assinado falhe, tenta o link do bucket público direto
+    if supabase_configurado():
+        url_direta = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{video_id}.mp3"
+        print(f"🔀 Usando fallback de URL pública direta: {url_direta}")
+        return redirect(url_direta)
+        
+    # Fallback 2: Se o Supabase estiver indisponível, joga para a API alternativa
+    print(f"⚠️ Supabase fora do ar. Acionando fallback do conversor para {video_id}")
+    return redirect(f"https://vevioz.com{video_id}")
 
     # Gera uma URL temporária para o arquivo privado
     signed_url = gerar_url_assinada_supabase(
@@ -1876,15 +1888,7 @@ def servir_audio_supabase(request, video_id):
             {"erro": "Erro interno ao carregar áudio."},
             status=500
         )
-
-def servir_audio_supabase(request, video_id):
-    """
-    Túnel de Áudio Oficial: Usa o yt-dlp na nuvem apenas para pescar a URL 
-    direta do fluxo de áudio (stream) do próprio YouTube e redireciona o Tone.js 
-    para ela. Burlar 100% o limite da Vercel, o CORS e as falhas do Vevioz!
-    """
-    video_id = str(video_id).strip()
-    url_youtube = f"https://youtube.com{video_id}"
+    
     
     ydl_opts = {
         'format': 'bestaudio/best',
