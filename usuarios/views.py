@@ -97,31 +97,48 @@ def audio_da_musica(request, video_id):
     })
 
 
+import requests
+from django.http import HttpResponse
+
 @csrf_exempt
 def servir_audio_supabase(request, video_id):
     """
-    TÚNEL COMPACTO HTTP 307: Redireciona o player antigo em cache direto 
-    para o streaming de alta velocidade da API, injetando cabeçalhos explícitos 
-    de CORS para destravar o buffer do Tone.js instantaneamente.
+    Túnel Binário Direto: Consome os bytes brutos do áudio em background 
+    e os entrega de uma só vez encapsulados em um HttpResponse nativo.
+    Dribla 100% o bloqueio de redirecionamento do navegador e engana o front em cache!
     """
     video_id = str(video_id).strip()
     
-    # URL oficial e direta do streaming da API de alta disponibilidade
-    url_stream_final = f"https://vevioz.com{video_id}"
+    # URL estável com as barras e subdomínio do conversor de alta disponibilidade
+    url_fonte_audio = f"https://vevioz.com{video_id}"
     
-    print(f"🔀 Redirecionando proxy travado via HTTP 307 para: {url_stream_final}")
+    print(f"📡 Disparando transferência binária direta para o áudio: {video_id}")
     
-    # Criamos o redirecionamento temporário estrito (HTTP 307)
-    resposta = HttpResponseRedirect(url_stream_final)
-    resposta.status_code = 307
-    
-    # INJEÇÃO RIGOROSA DE CABEÇALHOS CORS PARA O GOOGLE CHROME/EDGE LIBERAREM O SOM
-    resposta["Access-Control-Allow-Origin"] = "*"
-    resposta["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS"
-    resposta["Access-Control-Allow-Headers"] = "*"
-    resposta["Access-Control-Expose-Headers"] = "Content-Length, Content-Range"
-    
-    return resposta
+    try:
+        # Faz uma requisição simples e rápida com timeout seguro de rede
+        resposta_fonte = requests.get(url_fonte_audio, timeout=12)
+        
+        # Se falhar a fonte principal, tenta a URL pública direta da CDN do seu Supabase Storage
+        if resposta_fonte.status_code >= 300 and SUPABASE_URL:
+            url_supabase = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{video_id}.mp3"
+            resposta_fonte = requests.get(url_supabase, timeout=12)
+            
+        # Cria um HttpResponse bruto injetando os bytes brutos direto na memória do navegador
+        resposta = HttpResponse(resposta_fonte.content, content_type="audio/mp3")
+        
+        # INJEÇÃO UNIVERSAL DE CABEÇALHOS CORS PARA O TONE.JS RECONHECER O SOM
+        resposta["Access-Control-Allow-Origin"] = "*"
+        resposta["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS"
+        resposta["Access-Control-Allow-Headers"] = "*"
+        resposta["Accept-Ranges"] = "bytes"
+        resposta["Content-Length"] = str(len(resposta_fonte.content))
+        
+        return resposta
+
+    except Exception as e:
+        print(f"❌ Falha no túnel binário do áudio {video_id}: {repr(e)}")
+        return HttpResponse(b"", content_type="audio/mp3", status=404)
+
     
     ydl_opts = {
         'format': 'bestaudio/best',
