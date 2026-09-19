@@ -1886,18 +1886,41 @@ def servir_audio_supabase(request, video_id):
 
 def servir_audio_supabase(request, video_id):
     """
-    Entrega o link de stream direto da API de alta velocidade,
-    burlando o limite de tamanho de arquivos (4.5MB) da Vercel.
+    Túnel Estático de Alta Velocidade: Faz o Django abrir o fluxo da API do Vevioz
+    e transmiti-lo em pedaços binários para o Tone.js em tempo real.
+    Garante o carregamento instantâneo do buffer sem estourar o limite de payload da Vercel.
     """
     video_id = str(video_id).strip()
     
-    # URL oficial e formatada com o subdomínio e as barras da API do conversor rápido
-    url_stream_oficial = f"https://vevioz.com{video_id}"
+    # URL estável com as barras e subdomínio do conversor de alta disponibilidade
+    url_origem_audio = f"https://vevioz.com{video_id}"
     
-    print(f"🚀 Redirecionando player para streaming direto de alta velocidade: {url_stream_oficial}")
+    print(f"📡 Abrindo túnel de streaming estável para o áudio: {video_id}")
     
-    # Retorna o redirecionamento HTTP nativo. O Tone.js segue isso na hora e solta o som!
-    return redirect(url_stream_oficial)
+    try:
+        # Abrimos a requisição em modo streaming direto na fonte do conversor
+        resposta_origem = requests.get(url_origem_audio, stream=True, timeout=15)
+        
+        # Repassamos o conteúdo em pedaços binários contínuos de 4KB (não estoura o limite da Vercel)
+        resposta = StreamingHttpResponse(
+            resposta_origem.iter_content(chunk_size=4096),
+            status=resposta_origem.status_code,
+            content_type="audio/mp3"
+        )
+        
+        # INJEÇÃO RIGOROSA DE CABEÇALHOS CORS PARA O TONE.JS RECONHECER O SOM
+        resposta["Access-Control-Allow-Origin"] = "*"
+        resposta["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS"
+        resposta["Access-Control-Allow-Headers"] = "*"
+        resposta["Accept-Ranges"] = "bytes"
+        
+        return resposta
+
+    except Exception as e:
+        print(f"❌ Falha crítica no túnel de áudio {video_id}: {repr(e)}")
+        # Fallback de emergência limpo com HttpResponse em branco se a internet cair
+        from django.http import HttpResponse
+        return HttpResponse(b"", content_type="audio/mp3", status=404)
 
     # --------------------------------------------------------
     # BUSCAR MÚSICA
