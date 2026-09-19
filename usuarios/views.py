@@ -562,12 +562,13 @@ def processar_audio_youtube(request, video_id=None):
     url_conversor_alternativo = f"https://vevioz.com{video_id}"
     url_supabase_obrigatoria = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{video_id}.mp3" if supabase_configurado() else url_conversor_alternativo
 
-    # 1. VERIFICAÇÃO DE DUPLICIDADE (RETORNA REGISTROS QUE JÁ EXISTEM)
+       # 1. VERIFICAÇÃO DE DUPLICIDADE (MÚSICAS JÁ CADASTRADAS)
     musica_existente = Musica.objects.filter(videoId=video_id).first()
     if musica_existente:
+        # Garante a construção do link público direto do bucket CDN do Supabase Storage
         url_retorno = str(musica_existente.audio)
-        if not url_retorno.startswith("http"):
-            url_retorno = url_supabase_obrigatoria
+        if "vevioz" in url_retorno or not url_retorno.startswith("http") or "audio-arquivo" in url_retorno:
+            url_retorno = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{video_id}.mp3"
             musica_existente.audio = url_retorno
             musica_existente.save()
 
@@ -577,10 +578,12 @@ def processar_audio_youtube(request, video_id=None):
             "titulo": musica_existente.titulo,
             "videoId": musica_existente.videoId,
             "cantor": musica_existente.cantor,
+            # SOLUÇÃO DEFINITIVA: Força o Tone.js a ler a CDN direta super rápida, ignorando o proxy
             "audio": url_retorno,
             "url": url_retorno,
             "audio_url": url_retorno
         })
+
 
     # 2. CAPTURA O ÁUDIO - BLINDAGEM DUPLA CONTRA BLOQUEIO DE BOTS
     url_audio_final = ""
