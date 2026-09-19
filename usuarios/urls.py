@@ -7,7 +7,8 @@ from .views import (
     ranking,
     listar_audios,
     associar_audio,
-    audio_da_musica,  # A view estável que entrega a URL em texto
+    audio_da_musica,
+    servir_audio_supabase,  # RESTAURADO: Import da view de stream binário
     teste_bgutil,
     testar_youtube,
 )
@@ -20,20 +21,16 @@ urlpatterns = [
     # Rota de Salvamento inicial (POST)
     path("salvar/", processar_audio_youtube),
 
-    # Rotas de gerenciamento internas
+    # Listagem e Gerenciamento
     path("listar/", listar_musicas),
     path("deletar/<int:id>/", deletar_musica),
     path("ranking/", ranking),
     path("audios/", listar_audios),
     path("associar-audio/", associar_audio),
 
-    # Busca padrão da playlist
+    # Busca padrão textual da playlist (GET)
     path("audio/<str:video_id>/", audio_da_musica),
 
-    # =========================================================================
-    # A JOGADA MÁGICA CONTRA O CACHE DO FRONTEND:
-    # Mapeamos a rota de arquivo travada no front antigo para apontar para a nossa 
-    # view textual estável. Isso anula o loop infinito e entrega a CDN do Supabase!
-    # =========================================================================
-    path("audio-arquivo/<str:video_id>/", audio_da_musica),
+    # RESTAURADO: Mapeamento exato da rota que o front antigo em cache busca
+    path("audio-arquivo/<str:video_id>/", servir_audio_supabase),
 ]

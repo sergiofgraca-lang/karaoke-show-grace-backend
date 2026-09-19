@@ -12,6 +12,12 @@ import imageio_ffmpeg
 import requests
 import yt_dlp
 
+import requests
+from django.http import StreamingHttpResponse, JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from .models import Musica
+
+
 from django.conf import settings
 from django.db.models import Count
 from django.http import JsonResponse, HttpResponse
@@ -69,37 +75,73 @@ def audio_da_musica(request, video_id):
         return HttpResponse(b"", content_type="audio/mp3", status=404)
 
 @csrf_exempt
+def audio_da_musica(request, video_id):
+    """
+    Controla o ponto de entrada da Playlist entregando os metadados.
+    """
+    video_id = str(video_id).strip()
+    try:
+        musica = Musica.objects.filter(videoId=video_id).first()
+    except Exception as e:
+        return JsonResponse({"erro": str(e)}, status=500)
+
+    if not musica:
+        return JsonResponse({"erro": "Música não encontrada.", "videoId": video_id}, status=404)
+
+    url_proxy_obrigatoria = f"https://vercel.app{video_id}/"
+
+    return JsonResponse({
+        "status": "sucesso",
+        "titulo": musica.titulo,
+        "videoId": musica.videoId,
+        "audio": url_proxy_obrigatoria,
+        "url": url_proxy_obrigatoria,
+        "audio_url": url_proxy_obrigatoria
+    })
+
+
+@csrf_exempt
 def servir_audio_supabase(request, video_id):
     """
-    Túnel de Mídia por Redirecionamento 307 com injeção manual de CORS.
-    Burlar o cache rígido do front, o limite de 4.5MB da Vercel e destrava o Tone.js!
+    TÚNEL BINÁRIO EM CHUNKS: Consome os bytes brutos do conversor estável
+    e os transmite em blocos de 64KB contínuos para o Tone.js.
+    Engana o front cacheado, destrava o CORS e anula o timeout da Vercel!
     """
     video_id = str(video_id).strip()
     
-    # 1. Tenta gerar a URL temporária assinada (válida por 1 hora)
-    url_final = gerar_url_assinada_supabase(video_id, segundos=3600)
+    # URL estável oficial da API do conversor rápido
+    url_fonte_audio = f"https://vevioz.com{video_id}"
     
-    # Fallback se a assinatura falhar: usa o link público direto da CDN do Supabase
-    if not url_final and supabase_configurado():
-        url_final = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{video_id}.mp3"
+    print(f"📡 Abrindo túnel de streaming fatiado para o áudio: {video_id}")
+    
+    try:
+        # Abrimos a requisição em modo streaming (stream=True) diretamente na fonte externa
+        resposta_fonte = requests.get(url_fonte_audio, stream=True, timeout=12)
         
-    # Super Fallback: Se o Supabase estiver indisponível, usa o link direto da API do Vevioz
-    if not url_final:
-        url_final = f"https://vevioz.com{video_id}"
+        # Se falhar o conversor principal, usa a URL pública direta da CDN do seu Supabase Storage
+        if resposta_fonte.status_code >= 300 and SUPABASE_URL:
+            url_supabase = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{video_id}.mp3"
+            resposta_fonte = requests.get(url_supabase, stream=True, timeout=12)
+            
+        # Cria a resposta de streaming nativa enviando pedaços pequenos de 64KB por segundo
+        resposta = StreamingHttpResponse(
+            resposta_fonte.iter_content(chunk_size=65536),
+            status=resposta_fonte.status_code,
+            content_type="audio/mp3"
+        )
         
-    print(f"🔀 Redirecionando proxy antigo via HTTP 307 para: {url_final[:70]}...")
-    
-    # Criamos um Redirecionamento Temporário 307 manual
-    resposta = HttpResponseRedirect(url_final)
-    resposta.status_code = 307  # Força o status de redirecionamento temporário estrito
-    
-    # INJEÇÃO COMPLETA DE CABEÇALHOS CORS PARA DESTRAVAR O TONE.JS
-    resposta["Access-Control-Allow-Origin"] = "*"
-    resposta["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS"
-    resposta["Access-Control-Allow-Headers"] = "*"
-    resposta["Access-Control-Expose-Headers"] = "Content-Length, Content-Range"
-    
-    return resposta
+        # INJEÇÃO COMPLETA DE CABEÇALHOS CORS DE NÍVEL DE REDE
+        resposta["Access-Control-Allow-Origin"] = "*"
+        resposta["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS"
+        resposta["Access-Control-Allow-Headers"] = "*"
+        resposta["Accept-Ranges"] = "bytes"
+        
+        return resposta
+
+    except Exception as e:
+        print(f"❌ Falha no túnel de áudio {video_id}: {repr(e)}")
+        from django.http import HttpResponse
+        return HttpResponse(b"", content_type="audio/mp3", status=404)
     
     ydl_opts = {
         'format': 'bestaudio/best',
