@@ -1798,96 +1798,56 @@ def encontrar_audio(video_id):
 # BUSCAR ÁUDIO DE UMA MÚSICA
 # ============================================================
 
+import requests
+from django.http import StreamingHttpResponse, HttpResponse
+
 def servir_audio_supabase(request, video_id):
     """
-    Entrega uma URL pública e temporária diretamente do Supabase Storage,
-    eliminando o gargalo de payload e os timeouts de 10 segundos da Vercel.
+    Túnel de Áudio por Streaming: Abre o fluxo da URL assinada (ou pública) da Supabase
+    e repassa para o Tone.js em blocos de 64KB.
+    Bula o limite de payload de 4.5MB da Vercel e destrava o erro de CORS do buffer!
     """
     video_id = str(video_id).strip()
     
-    # Tentamos usar a função utilitária que você já tem no topo do arquivo
-    # para gerar um link de acesso assinado válido por 1 hora (3600 segundos)
-    url_assinada = gerar_url_assinada_supabase(video_id, segundos=3600)
+    # 1. Tenta obter a URL temporária assinada usando sua função utilitária do topo
+    url_origem = gerar_url_assinada_supabase(video_id, segundos=3600)
     
-    if url_assinada:
-        print(f"🔐 URL assinada gerada com sucesso! Redirecionando Tone.js: {url_assinada[:80]}...")
-        return redirect(url_assinada)
+    # Fallback se a assinatura falhar: usa o link público direto da CDN do Supabase
+    if not url_origem and supabase_configurado():
+        url_origem = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{video_id}.mp3"
         
-    # Fallback 1: Caso o token assinado falhe, tenta o link do bucket público direto
-    if supabase_configurado():
-        url_direta = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{video_id}.mp3"
-        print(f"🔀 Usando fallback de URL pública direta: {url_direta}")
-        return redirect(url_direta)
+    # Super Fallback: Se o seu Supabase estiver desconfigurado, consome do conversor rápido
+    if not url_origem:
+        url_origem = f"https://vevioz.com{video_id}"
         
-    # Fallback 2: Se o Supabase estiver indisponível, joga para a API alternativa
-    print(f"⚠️ Supabase fora do ar. Acionando fallback do conversor para {video_id}")
-    return redirect(f"https://vevioz.com{video_id}")
-
-    # Gera uma URL temporária para o arquivo privado
-    signed_url = gerar_url_assinada_supabase(
-        video_id,
-        segundos=3600
-    )
-
-    print("🔗 URL assinada:", signed_url)
-
-    if not signed_url:
-        print(
-            "❌ Não foi possível gerar URL do áudio."
-        )
-
-        return JsonResponse(
-            {"erro": "Áudio não encontrado."},
-            status=404
-        )
-
+    print(f"📡 Abrindo túnel de streaming ativo para a origem: {url_origem[:70]}...")
+    
     try:
-        resposta = requests.get(
-            signed_url,
-            timeout=30
+        # Iniciamos a requisição em modo streaming direto na fonte do arquivo
+        resposta_origem = requests.get(url_origem, stream=True, timeout=15)
+        
+        # Criamos o repasse binário fatiado em pequenos blocos de 64KB
+        resposta = StreamingHttpResponse(
+            resposta_origem.iter_content(chunk_size=65536),
+            status=resposta_origem.status_code,
+            content_type="audio/mp3"
         )
-
-        print(
-            "📥 Supabase respondeu:",
-            resposta.status_code,
-            "Tamanho:",
-            len(resposta.content)
-        )
-
-        if resposta.status_code != 200:
-            print(
-                "❌ Erro ao baixar áudio do Supabase:",
-                resposta.text[:500]
-            )
-
-            return JsonResponse(
-                {"erro": "Não foi possível obter o áudio."},
-                status=404
-            )
-
-        response = HttpResponse(
-            resposta.content,
-            content_type="audio/mpeg"
-        )
-
-        response["Content-Length"] = str(
-            len(resposta.content)
-        )
-
-        response["Cache-Control"] = "no-cache"
-
-        return response
+        
+        # INJEÇÃO RIGOROSA DE CABEÇALHOS CORS DE NÍVEL DE REDE
+        resposta["Access-Control-Allow-Origin"] = "*"
+        resposta["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS"
+        resposta["Access-Control-Allow-Headers"] = "*"
+        resposta["Accept-Ranges"] = "bytes"
+        
+        if "Content-Length" in resposta_origem.headers:
+            resposta["Content-Length"] = resposta_origem.headers["Content-Length"]
+            
+        return resposta
 
     except Exception as e:
-        print(
-            "❌ Erro servindo áudio:",
-            str(e)
-        )
+        print(f"❌ Falha crítica no túnel de áudio {video_id}: {repr(e)}")
+        return HttpResponse(b"", content_type="audio/mp3", status=404)
 
-        return JsonResponse(
-            {"erro": "Erro interno ao carregar áudio."},
-            status=500
-        )
     
     
     ydl_opts = {
