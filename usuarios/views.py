@@ -20,6 +20,11 @@ from django.views.decorators.csrf import csrf_exempt
 from yt_dlp.globals import plugin_dirs
 from yt_dlp.plugins import load_all_plugins
 
+from django.shortcuts import redirect
+
+from django.http import HttpResponseRedirect
+
+
 def limpar_texto(texto):
     """
     Limpa e normaliza textos recebidos do YouTube.
@@ -1879,34 +1884,46 @@ def servir_audio_supabase(request, video_id):
             status=500
         )
 
-
-from django.shortcuts import redirect
-
-from django.http import HttpResponseRedirect
+import requests
+from django.http import StreamingHttpResponse
 
 def servir_audio_supabase(request, video_id):
     """
-    Caso o frontend antigo em cache chame esta rota de proxy,
-    redirecionamos o navegador para a URL pública do Supabase Storage
-    injetando os cabeçalhos de liberação de CORS universais (*).
+    Túnel de Áudio: Baixa o MP3 do Supabase em background e o transmite
+    direto para o Tone.js como se o arquivo estivesse no próprio Django,
+    eliminando 100% os bloqueios de CORS e redirecionamento do navegador.
     """
     video_id = str(video_id).strip()
     
-    # Monta a URL pública e direta do seu arquivo dentro do bucket 'audios'
+    # Reconstrói a URL pública direta da CDN do Supabase
     url_direta_supabase = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{video_id}.mp3"
     
-    print(f"🔀 Redirecionando proxy com injeção de CORS para CDN: {url_direta_supabase}")
+    print(f"📡 Abrindo túnel de streaming direto para o áudio: {video_id}")
     
-    # Criamos a resposta de redirecionamento HTTP 302 manual
-    resposta = HttpResponseRedirect(url_direta_supabase)
-    
-    # INJEÇÃO SEGURO ANTI-BLOQUEIO DE CORS: Permite que o Tone.js processe o áudio binário
-    resposta["Access-Control-Allow-Origin"] = "*"
-    resposta["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS"
-    resposta["Access-Control-Allow-Headers"] = "*"
-    
-    return resposta
+    try:
+        # Abre a conexão com o Supabase e captura o arquivo em blocos binários (chunks)
+        resposta_supabase = requests.get(url_direta_supabase, stream=True, timeout=15)
+        
+        # Cria uma resposta de streaming nativa do Django repassando os blocos de áudio
+        resposta = StreamingHttpResponse(
+            resposta_supabase.iter_content(chunk_size=4096),
+            status=resposta_supabase.status_code,
+            content_type="audio/mp3"
+        )
+        
+        # Injeta as permissões universais para o navegador aceitar a reprodução
+        resposta["Access-Control-Allow-Origin"] = "*"
+        resposta["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS"
+        resposta["Access-Control-Allow-Headers"] = "*"
+        resposta["Accept-Ranges"] = "bytes"
+        
+        return resposta
 
+    except Exception as e:
+        print(f"❌ Erro no túnel de streaming do áudio {video_id}: {repr(e)}")
+        # Se falhar o túnel, faz o desvio rápido para o conversor original por segurança
+        from django.shortcuts import redirect
+        return redirect(f"https://vevioz.com{video_id}")
 
     # --------------------------------------------------------
     # BUSCAR MÚSICA
