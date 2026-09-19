@@ -1798,55 +1798,32 @@ def encontrar_audio(video_id):
 # BUSCAR ÁUDIO DE UMA MÚSICA
 # ============================================================
 
-import requests
-from django.http import StreamingHttpResponse, HttpResponse
+from django.shortcuts import redirect
 
 def servir_audio_supabase(request, video_id):
     """
-    Túnel de Áudio por Streaming: Abre o fluxo da URL assinada (ou pública) da Supabase
-    e repassa para o Tone.js em blocos de 64KB.
-    Bula o limite de payload de 4.5MB da Vercel e destrava o erro de CORS do buffer!
+    Entrega uma URL com token assinado direto do Supabase Storage,
+    eliminando 100% o gargalo de payload e os timeouts de streaming da Vercel.
     """
     video_id = str(video_id).strip()
     
-    # 1. Tenta obter a URL temporária assinada usando sua função utilitária do topo
-    url_origem = gerar_url_assinada_supabase(video_id, segundos=3600)
+    # 1. Tenta gerar a URL temporária assinada usando a sua função do topo (válida por 1 hora)
+    url_assinada = gerar_url_assinada_supabase(video_id, segundos=3600)
     
-    # Fallback se a assinatura falhar: usa o link público direto da CDN do Supabase
-    if not url_origem and supabase_configurado():
-        url_origem = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{video_id}.mp3"
+    if url_assinada:
+        print(f"🔐 URL assinada gerada com sucesso! Redirecionando Tone.js para o Storage seguro.")
+        return redirect(url_assinada)
         
-    # Super Fallback: Se o seu Supabase estiver desconfigurado, consome do conversor rápido
-    if not url_origem:
-        url_origem = f"https://vevioz.com{video_id}"
+    # Fallback 1: Se a assinatura falhar por qualquer motivo, tenta a URL pública direta da CDN do Supabase
+    if supabase_configurado():
+        url_direta = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{video_id}.mp3"
+        print(f"🔀 Usando fallback de URL pública direta da CDN Supabase.")
+        return redirect(url_direta)
         
-    print(f"📡 Abrindo túnel de streaming ativo para a origem: {url_origem[:70]}...")
-    
-    try:
-        # Iniciamos a requisição em modo streaming direto na fonte do arquivo
-        resposta_origem = requests.get(url_origem, stream=True, timeout=15)
-        
-        # Criamos o repasse binário fatiado em pequenos blocos de 64KB
-        resposta = StreamingHttpResponse(
-            resposta_origem.iter_content(chunk_size=65536),
-            status=resposta_origem.status_code,
-            content_type="audio/mp3"
-        )
-        
-        # INJEÇÃO RIGOROSA DE CABEÇALHOS CORS DE NÍVEL DE REDE
-        resposta["Access-Control-Allow-Origin"] = "*"
-        resposta["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS"
-        resposta["Access-Control-Allow-Headers"] = "*"
-        resposta["Accept-Ranges"] = "bytes"
-        
-        if "Content-Length" in resposta_origem.headers:
-            resposta["Content-Length"] = resposta_origem.headers["Content-Length"]
-            
-        return resposta
+    # Fallback 2: Se o seu Supabase estiver fora do ar, aciona o conversor alternativo rápido
+    print(f"⚠️ Supabase indisponível. Acionando fallback do conversor para {video_id}")
+    return redirect(f"https://vevioz.com{video_id}")
 
-    except Exception as e:
-        print(f"❌ Falha crítica no túnel de áudio {video_id}: {repr(e)}")
-        return HttpResponse(b"", content_type="audio/mp3", status=404)
 
     
     
