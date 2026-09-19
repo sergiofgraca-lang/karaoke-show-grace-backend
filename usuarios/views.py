@@ -22,7 +22,9 @@ from yt_dlp.plugins import load_all_plugins
 
 from django.shortcuts import redirect
 
-from django.http import HttpResponseRedirect
+from django.http import JsonResponse
+
+
 
 
 def limpar_texto(texto):
@@ -1886,41 +1888,36 @@ def servir_audio_supabase(request, video_id):
 
 def servir_audio_supabase(request, video_id):
     """
-    Túnel Estático de Alta Velocidade: Faz o Django abrir o fluxo da API do Vevioz
-    e transmiti-lo em pedaços binários para o Tone.js em tempo real.
-    Garante o carregamento instantâneo do buffer sem estourar o limite de payload da Vercel.
+    Túnel de Áudio Oficial: Usa o yt-dlp na nuvem apenas para pescar a URL 
+    direta do fluxo de áudio (stream) do próprio YouTube e redireciona o Tone.js 
+    para ela. Burlar 100% o limite da Vercel, o CORS e as falhas do Vevioz!
     """
     video_id = str(video_id).strip()
+    url_youtube = f"https://youtube.com{video_id}"
     
-    # URL estável com as barras e subdomínio do conversor de alta disponibilidade
-    url_origem_audio = f"https://vevioz.com{video_id}"
-    
-    print(f"📡 Abrindo túnel de streaming estável para o áudio: {video_id}")
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'quiet': True,
+        'no_warnings': True,
+        'skip_download': True,
+    }
     
     try:
-        # Abrimos a requisição em modo streaming direto na fonte do conversor
-        resposta_origem = requests.get(url_origem_audio, stream=True, timeout=15)
-        
-        # Repassamos o conteúdo em pedaços binários contínuos de 4KB (não estoura o limite da Vercel)
-        resposta = StreamingHttpResponse(
-            resposta_origem.iter_content(chunk_size=4096),
-            status=resposta_origem.status_code,
-            content_type="audio/mp3"
-        )
-        
-        # INJEÇÃO RIGOROSA DE CABEÇALHOS CORS PARA O TONE.JS RECONHECER O SOM
-        resposta["Access-Control-Allow-Origin"] = "*"
-        resposta["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS"
-        resposta["Access-Control-Allow-Headers"] = "*"
-        resposta["Accept-Ranges"] = "bytes"
-        
-        return resposta
-
+        print(f"🔎 Buscando link de transmissão oficial do YouTube para: {video_id}")
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url_youtube, download=False)
+            url_transmissao_direta = info.get('url', '')
+            
+            if url_transmissao_direta:
+                print(f"🚀 Link oficial encontrado! Redirecionando Tone.js para o Google Video CDN.")
+                # Redireciona o navegador para o link do fluxo de áudio original do YouTube
+                return redirect(url_transmissao_direta)
+                
     except Exception as e:
-        print(f"❌ Falha crítica no túnel de áudio {video_id}: {repr(e)}")
-        # Fallback de emergência limpo com HttpResponse em branco se a internet cair
-        from django.http import HttpResponse
-        return HttpResponse(b"", content_type="audio/mp3", status=404)
+        print(f"⚠️ Falha ao extrair fluxo oficial: {repr(e)}")
+        
+    # Super Fallback: Se tudo falhar, tenta o conversor alternativo formatado
+    return redirect(f"https://vevioz.com{video_id}")
 
     # --------------------------------------------------------
     # BUSCAR MÚSICA
