@@ -1,45 +1,39 @@
 from django.urls import path
 from django.http import JsonResponse, HttpResponse
 from .views import (
-    processar_audio_youtube,  # Nossa view unificada e protegida contra bots
+    processar_audio_youtube,
     listar_musicas,
     deletar_musica,
     ranking,
     listar_audios,
     associar_audio,
-    servir_audio_supabase,
+    audio_da_musica,  # A view estável que entrega a URL em texto
     teste_bgutil,
     testar_youtube,
 )
 
 urlpatterns = [
-    # Diagnóstico temporário Vercel -> Render/bgutil
+    # Diagnóstico temporário Vercel
     path("teste-bgutil/", teste_bgutil),
-
-    # Diagnóstico temporário Vercel -> YouTube
     path("test-youtube/", testar_youtube),
 
-    # Salvar/processar uma música (POST)
+    # Rota de Salvamento inicial (POST)
     path("salvar/", processar_audio_youtube),
 
-    # Listagem
+    # Rotas de gerenciamento internas
     path("listar/", listar_musicas),
-
-    # Exclusão
     path("deletar/<int:id>/", deletar_musica),
-
-    # Ranking
     path("ranking/", ranking),
-
-    # Áudios disponíveis
     path("audios/", listar_audios),
-
-    # Associar áudio manualmente
     path("associar-audio/", associar_audio),
 
-    # CORREÇÃO CHAVE: Aponta as consultas da playlist para a nossa view blindada de produção (GET)
-    path("audio/<str:video_id>/", processar_audio_youtube),
+    # Busca padrão da playlist
+    path("audio/<str:video_id>/", audio_da_musica),
 
-    # Entregar o MP3 privado do Supabase através do Django
-    path("audio-arquivo/<str:video_id>/", servir_audio_supabase),
+    # =========================================================================
+    # A JOGADA MÁGICA CONTRA O CACHE DO FRONTEND:
+    # Mapeamos a rota de arquivo travada no front antigo para apontar para a nossa 
+    # view textual estável. Isso anula o loop infinito e entrega a CDN do Supabase!
+    # =========================================================================
+    path("audio-arquivo/<str:video_id>/", audio_da_musica),
 ]
