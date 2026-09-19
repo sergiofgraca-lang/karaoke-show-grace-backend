@@ -100,58 +100,28 @@ def audio_da_musica(request, video_id):
 @csrf_exempt
 def servir_audio_supabase(request, video_id):
     """
-    TÚNEL BINÁRIO INTELIGENTE: Verifica se o arquivo existe na Supabase. 
-    Se sim, transmite em blocos de 64KB. Se não (devido a bot block do YT), 
-    consome e transmite o stream em tempo real da API aberta do Vevioz.
-    Burlar 100% o Erro 400, o CORS e o limite da Vercel!
+    TÚNEL COMPACTO HTTP 307: Redireciona o player antigo em cache direto 
+    para o streaming de alta velocidade da API, injetando cabeçalhos explícitos 
+    de CORS para destravar o buffer do Tone.js instantaneamente.
     """
     video_id = str(video_id).strip()
     
-    # 1. URL pública direta do seu bucket oficial na Supabase
-    url_supabase = f"https://supabase.co{video_id}.mp3"
-    url_vevioz = f"https://vevioz.com{video_id}"
+    # URL oficial e direta do streaming da API de alta disponibilidade
+    url_stream_final = f"https://vevioz.com{video_id}"
     
-    url_fonte_final = url_vevioz  # Inicializa assumindo o Vevioz como rota padrão de alta disponibilidade
+    print(f"🔀 Redirecionando proxy travado via HTTP 307 para: {url_stream_final}")
     
-    try:
-        print(f"🔎 Testando existência do arquivo no Supabase para o vídeo: {video_id}")
-        # Faz uma checagem rápida (HEAD) para ver se o arquivo existe de verdade no seu storage
-        checagem_supabase = requests.head(url_supabase, timeout=5)
-        
-        if checagem_supabase.status_code == 200:
-            print("✅ Arquivo legítimo encontrado no Supabase Storage. Transmitindo...")
-            url_fonte_final = url_supabase
-        else:
-            print("⚠️ Arquivo não localizado no Supabase (YT Bot Check ativo). Desviando para a API Vevioz...")
-            url_fonte_final = url_vevioz
-            
-    except Exception:
-        url_fonte_final = url_vevioz
-
-    print(f"📡 Abrindo túnel expresso por blocos de 64KB para a fonte: {url_fonte_final}")
+    # Criamos o redirecionamento temporário estrito (HTTP 307)
+    resposta = HttpResponseRedirect(url_stream_final)
+    resposta.status_code = 307
     
-    try:
-        # Abre a requisição de streaming na fonte final escolhida (Supabase ou Vevioz)
-        resposta_fonte = requests.get(url_fonte_final, stream=True, timeout=12)
-        
-        # Cria a resposta fatiada em blocos de 64KB (evita timeout da Vercel)
-        resposta = StreamingHttpResponse(
-            resposta_fonte.iter_content(chunk_size=65536),
-            status=resposta_fonte.status_code,
-            content_type="audio/mp3"
-        )
-        
-        # INJEÇÃO COMPLETA DE CABEÇALHOS CORS DE SEGUNDO PLANO
-        resposta["Access-Control-Allow-Origin"] = "*"
-        resposta["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS"
-        resposta["Access-Control-Allow-Headers"] = "*"
-        resposta["Accept-Ranges"] = "bytes"
-        
-        return resposta
-
-    except Exception as e:
-        print(f"❌ Falha crítica no túnel de áudio {video_id}: {repr(e)}")
-        return HttpResponse(b"", content_type="audio/mp3", status=404)
+    # INJEÇÃO RIGOROSA DE CABEÇALHOS CORS PARA O GOOGLE CHROME/EDGE LIBERAREM O SOM
+    resposta["Access-Control-Allow-Origin"] = "*"
+    resposta["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS"
+    resposta["Access-Control-Allow-Headers"] = "*"
+    resposta["Access-Control-Expose-Headers"] = "Content-Length, Content-Range"
+    
+    return resposta
     
     ydl_opts = {
         'format': 'bestaudio/best',
