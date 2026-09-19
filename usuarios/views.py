@@ -12,16 +12,13 @@ import imageio_ffmpeg
 import requests
 import yt_dlp
 
-import requests
 from django.http import StreamingHttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from .models import Musica
 
-
 from django.conf import settings
 from django.db.models import Count
 from django.http import JsonResponse, HttpResponse
-from django.views.decorators.csrf import csrf_exempt
 from django.http import StreamingHttpResponse, JsonResponse
 from django.http import HttpResponseRedirect
 
@@ -103,34 +100,48 @@ def audio_da_musica(request, video_id):
 @csrf_exempt
 def servir_audio_supabase(request, video_id):
     """
-    TÚNEL BINÁRIO EM CHUNKS: Consome os bytes brutos do conversor estável
-    e os transmite em blocos de 64KB contínuos para o Tone.js.
-    Engana o front cacheado, destrava o CORS e anula o timeout da Vercel!
+    TÚNEL BINÁRIO INTELIGENTE: Verifica se o arquivo existe na Supabase. 
+    Se sim, transmite em blocos de 64KB. Se não (devido a bot block do YT), 
+    consome e transmite o stream em tempo real da API aberta do Vevioz.
+    Burlar 100% o Erro 400, o CORS e o limite da Vercel!
     """
     video_id = str(video_id).strip()
     
-    # URL estável oficial da API do conversor rápido
-    url_fonte_audio = f"https://vevioz.com{video_id}"
+    # 1. URL pública direta do seu bucket oficial na Supabase
+    url_supabase = f"https://supabase.co{video_id}.mp3"
+    url_vevioz = f"https://vevioz.com{video_id}"
     
-    print(f"📡 Abrindo túnel de streaming fatiado para o áudio: {video_id}")
+    url_fonte_final = url_vevioz  # Inicializa assumindo o Vevioz como rota padrão de alta disponibilidade
     
     try:
-        # Abrimos a requisição em modo streaming (stream=True) diretamente na fonte externa
-        resposta_fonte = requests.get(url_fonte_audio, stream=True, timeout=12)
+        print(f"🔎 Testando existência do arquivo no Supabase para o vídeo: {video_id}")
+        # Faz uma checagem rápida (HEAD) para ver se o arquivo existe de verdade no seu storage
+        checagem_supabase = requests.head(url_supabase, timeout=5)
         
-        # Se falhar o conversor principal, usa a URL pública direta da CDN do seu Supabase Storage
-        if resposta_fonte.status_code >= 300 and SUPABASE_URL:
-            url_supabase = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{video_id}.mp3"
-            resposta_fonte = requests.get(url_supabase, stream=True, timeout=12)
+        if checagem_supabase.status_code == 200:
+            print("✅ Arquivo legítimo encontrado no Supabase Storage. Transmitindo...")
+            url_fonte_final = url_supabase
+        else:
+            print("⚠️ Arquivo não localizado no Supabase (YT Bot Check ativo). Desviando para a API Vevioz...")
+            url_fonte_final = url_vevioz
             
-        # Cria a resposta de streaming nativa enviando pedaços pequenos de 64KB por segundo
+    except Exception:
+        url_fonte_final = url_vevioz
+
+    print(f"📡 Abrindo túnel expresso por blocos de 64KB para a fonte: {url_fonte_final}")
+    
+    try:
+        # Abre a requisição de streaming na fonte final escolhida (Supabase ou Vevioz)
+        resposta_fonte = requests.get(url_fonte_final, stream=True, timeout=12)
+        
+        # Cria a resposta fatiada em blocos de 64KB (evita timeout da Vercel)
         resposta = StreamingHttpResponse(
             resposta_fonte.iter_content(chunk_size=65536),
             status=resposta_fonte.status_code,
             content_type="audio/mp3"
         )
         
-        # INJEÇÃO COMPLETA DE CABEÇALHOS CORS DE NÍVEL DE REDE
+        # INJEÇÃO COMPLETA DE CABEÇALHOS CORS DE SEGUNDO PLANO
         resposta["Access-Control-Allow-Origin"] = "*"
         resposta["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS"
         resposta["Access-Control-Allow-Headers"] = "*"
@@ -139,8 +150,7 @@ def servir_audio_supabase(request, video_id):
         return resposta
 
     except Exception as e:
-        print(f"❌ Falha no túnel de áudio {video_id}: {repr(e)}")
-        from django.http import HttpResponse
+        print(f"❌ Falha crítica no túnel de áudio {video_id}: {repr(e)}")
         return HttpResponse(b"", content_type="audio/mp3", status=404)
     
     ydl_opts = {
