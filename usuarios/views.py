@@ -1915,27 +1915,35 @@ from django.shortcuts import redirect
 
 def servir_audio_supabase(request, video_id):
     """
-    Entrega uma URL com token assinado direto do Supabase Storage,
-    eliminando 100% o gargalo de payload e os timeouts de streaming da Vercel.
+    Túnel de Mídia por Redirecionamento 307 com injeção manual de CORS.
+    Burlar o cache rígido do front, o limite de 4.5MB da Vercel e destrava o Tone.js!
     """
     video_id = str(video_id).strip()
     
-    # 1. Tenta gerar a URL temporária assinada usando a sua função do topo (válida por 1 hora)
-    url_assinada = gerar_url_assinada_supabase(video_id, segundos=3600)
+    # 1. Tenta gerar a URL temporária assinada (válida por 1 hora)
+    url_final = gerar_url_assinada_supabase(video_id, segundos=3600)
     
-    if url_assinada:
-        print(f"🔐 URL assinada gerada com sucesso! Redirecionando Tone.js para o Storage seguro.")
-        return redirect(url_assinada)
+    # Fallback se a assinatura falhar: usa o link público direto da CDN do Supabase
+    if not url_final and supabase_configurado():
+        url_final = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{video_id}.mp3"
         
-    # Fallback 1: Se a assinatura falhar por qualquer motivo, tenta a URL pública direta da CDN do Supabase
-    if supabase_configurado():
-        url_direta = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{video_id}.mp3"
-        print(f"🔀 Usando fallback de URL pública direta da CDN Supabase.")
-        return redirect(url_direta)
+    # Super Fallback: Se o Supabase estiver indisponível, usa o link direto da API do Vevioz
+    if not url_final:
+        url_final = f"https://vevioz.com{video_id}"
         
-    # Fallback 2: Se o seu Supabase estiver fora do ar, aciona o conversor alternativo rápido
-    print(f"⚠️ Supabase indisponível. Acionando fallback do conversor para {video_id}")
-    return redirect(f"https://vevioz.com{video_id}")
+    print(f"🔀 Redirecionando proxy antigo via HTTP 307 para: {url_final[:70]}...")
+    
+    # Criamos um Redirecionamento Temporário 307 manual
+    resposta = HttpResponseRedirect(url_final)
+    resposta.status_code = 307  # Força o status de redirecionamento temporário estrito
+    
+    # INJEÇÃO COMPLETA DE CABEÇALHOS CORS PARA DESTRAVAR O TONE.JS
+    resposta["Access-Control-Allow-Origin"] = "*"
+    resposta["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS"
+    resposta["Access-Control-Allow-Headers"] = "*"
+    resposta["Access-Control-Expose-Headers"] = "Content-Length, Content-Range"
+    
+    return resposta
 
 
     
