@@ -29,7 +29,8 @@ from django.http import JsonResponse
 def audio_da_musica(request, video_id):
     """
     Controla o ponto de entrada da Playlist.
-    Força o player do frontend a passar pelo nosso túnel seguro de áudio.
+    Força o player a puxar o arquivo .mp3 direto da infraestrutura ultra-rápida 
+    da CDN do Supabase Storage, ignorando o proxy lento e os timeouts da Vercel.
     """
     video_id = str(video_id).strip()
     
@@ -41,16 +42,25 @@ def audio_da_musica(request, video_id):
     if not musica:
         return JsonResponse({"erro": "Música não encontrada.", "videoId": video_id}, status=404)
 
-    # URL estável do nosso próprio proxy do Django que o frontend cacheado vai ler
-    url_proxy_obrigatoria = f"https://karaoke-show-grace-backend.vercel.app/api/audio-arquivo/{video_id}/"
+    # CONSTRUÇÃO DA URL DIRETA DA CDN DO SUPABASE STORAGE
+    # Substitui rotas locais ou links quebrados pelo endereço oficial do seu bucket 'audios'
+    url_direta_supabase = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{video_id}.mp3"
+
+    # Atualiza o banco Neon automaticamente caso o registro guardasse um link antigo
+    if str(musica.audio) != url_direta_supabase:
+        musica.audio = url_direta_supabase
+        musica.save(update_fields=["audio"])
+
+    print(f"🔗 Entregando link direto da CDN Supabase para o Tone.js: {url_direta_supabase}")
 
     return JsonResponse({
         "status": "sucesso",
         "titulo": musica.titulo,
         "videoId": musica.videoId,
-        "audio": url_proxy_obrigatoria,
-        "url": url_proxy_obrigatoria,
-        "audio_url": url_proxy_obrigatoria
+        # Alimentamos todas as chaves que o front lê com a URL direta e limpa da CDN
+        "audio": url_direta_supabase,
+        "url": url_direta_supabase,
+        "audio_url": url_direta_supabase
     })
 
 
