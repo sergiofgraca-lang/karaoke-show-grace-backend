@@ -1884,46 +1884,20 @@ def servir_audio_supabase(request, video_id):
             status=500
         )
 
-import requests
-from django.http import StreamingHttpResponse
-
 def servir_audio_supabase(request, video_id):
     """
-    Túnel de Áudio: Baixa o MP3 do Supabase em background e o transmite
-    direto para o Tone.js como se o arquivo estivesse no próprio Django,
-    eliminando 100% os bloqueios de CORS e redirecionamento do navegador.
+    Entrega o link de stream direto da API de alta velocidade,
+    burlando o limite de tamanho de arquivos (4.5MB) da Vercel.
     """
     video_id = str(video_id).strip()
     
-    # Reconstrói a URL pública direta da CDN do Supabase
-    url_direta_supabase = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{video_id}.mp3"
+    # URL oficial e formatada com o subdomínio e as barras da API do conversor rápido
+    url_stream_oficial = f"https://vevioz.com{video_id}"
     
-    print(f"📡 Abrindo túnel de streaming direto para o áudio: {video_id}")
+    print(f"🚀 Redirecionando player para streaming direto de alta velocidade: {url_stream_oficial}")
     
-    try:
-        # Abre a conexão com o Supabase e captura o arquivo em blocos binários (chunks)
-        resposta_supabase = requests.get(url_direta_supabase, stream=True, timeout=15)
-        
-        # Cria uma resposta de streaming nativa do Django repassando os blocos de áudio
-        resposta = StreamingHttpResponse(
-            resposta_supabase.iter_content(chunk_size=4096),
-            status=resposta_supabase.status_code,
-            content_type="audio/mp3"
-        )
-        
-        # Injeta as permissões universais para o navegador aceitar a reprodução
-        resposta["Access-Control-Allow-Origin"] = "*"
-        resposta["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS"
-        resposta["Access-Control-Allow-Headers"] = "*"
-        resposta["Accept-Ranges"] = "bytes"
-        
-        return resposta
-
-    except Exception as e:
-        print(f"❌ Erro no túnel de streaming do áudio {video_id}: {repr(e)}")
-        # Se falhar o túnel, faz o desvio rápido para o conversor original por segurança
-        from django.shortcuts import redirect
-        return redirect(f"https://vevioz.com{video_id}")
+    # Retorna o redirecionamento HTTP nativo. O Tone.js segue isso na hora e solta o som!
+    return redirect(url_stream_oficial)
 
     # --------------------------------------------------------
     # BUSCAR MÚSICA
