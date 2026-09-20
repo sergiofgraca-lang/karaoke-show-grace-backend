@@ -103,57 +103,41 @@ from django.views.decorators.csrf import csrf_exempt
 @csrf_exempt
 def servir_audio_supabase(request, video_id):
     """
-    TÚNEL BINÁRIO EXPRESSO: Consome os bytes brutos diretamente via requisição GET
-    da fonte correta. Se o arquivo estiver pronto no Supabase, transmite ele.
-    Se der erro (400, 404), captura em background e transmite a API estável do Vevioz.
-    Burlar 100% os bloqueios de cache do front, os timeouts da Vercel e as travas de CORS!
+    Túnel Binário Direto: Consome os bytes brutos do áudio da API em background
+    e os entrega de uma vez só encapsulados em um HttpResponse nativo.
+    Dribla 100% os bloqueios de streaming da Vercel e o CORS do navegador!
     """
     video_id = str(video_id).strip()
     
-    # URLs de origens mapeadas
-    url_supabase = f"https://supabase.co{video_id}.mp3"
-    url_vevioz = f"https://vevioz.com{video_id}"
+    # URL estável oficial da API do conversor rápido
+    url_fonte_audio = f"https://vevioz.com{video_id}"
     
-    conteudo_binario = b""
+    print(f"📡 [Túnel Expresso] Disparando transferência binária direta para o áudio: {video_id}")
     
     try:
-        print(f"📡 [Túnel] Tentando baixar áudio direto da CDN do Supabase: {video_id}")
-        # Faz uma requisição GET rápida para capturar o arquivo na memória RAM
-        resposta_fonte = requests.get(url_supabase, timeout=8)
+        # Faz uma requisição simples e rápida para obter todo o conteúdo binário
+        resposta_fonte = requests.get(url_fonte_audio, timeout=12)
         
-        # Se o Supabase responder com sucesso (Status 200), lemos os bytes
-        if resposta_fonte.status_code == 200:
-            print("✅ Sucesso: Arquivo lido diretamente do Supabase Storage.")
-            conteudo_binario = resposta_fonte.content
-        else:
-            # Se der erro 400 ou 404 por falha do yt-dlp na criação, aciona a rota de contingência
-            print(f"⚠️ Supabase retornou status {resposta_fonte.status_code}. Acionando desvio para API alternativa...")
-            resposta_alternativa = requests.get(url_vevioz, timeout=10)
-            conteudo_binario = resposta_alternativa.content
+        # Se a fonte falhar, tenta buscar o link direto público do seu Supabase Storage
+        if resposta_fonte.status_code >= 300 and SUPABASE_URL:
+            url_supabase = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{video_id}.mp3"
+            resposta_fonte = requests.get(url_supabase, timeout=12)
             
+        # Cria um HttpResponse bruto injetando os bytes direto na memória do navegador
+        resposta = HttpResponse(resposta_fonte.content, content_type="audio/mp3")
+        
+        # INJEÇÃO UNIVERSAL DE CABEÇALHOS CORS PARA O TONE.JS RECONHECER O SOM
+        resposta["Access-Control-Allow-Origin"] = "*"
+        resposta["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS"
+        resposta["Access-Control-Allow-Headers"] = "*"
+        resposta["Accept-Ranges"] = "bytes"
+        resposta["Content-Length"] = str(len(resposta_fonte.content))
+        
+        return resposta
+
     except Exception as e:
-        print(f"❌ Falha na conexão primária: {repr(e)}. Puxando canal de contingência...")
-        try:
-            resposta_alternativa = requests.get(url_vevioz, timeout=10)
-            conteudo_binario = resposta_alternativa.content
-        except Exception:
-            conteudo_binario = b""
-
-    # Se ambas as tentativas de rede falharem por completo, devolve um buffer vazio seguro
-    if not conteudo_binario:
+        print(f"❌ Falha crítica no túnel binário do áudio {video_id}: {repr(e)}")
         return HttpResponse(b"", content_type="audio/mp3", status=404)
-
-    # Cria a resposta encapsulada em um HttpResponse fechado e super leve
-    resposta = HttpResponse(conteudo_binario, content_type="audio/mp3")
-    
-    # INJEÇÃO RIGOROSA E OBRIGATÓRIA DE CABEÇALHOS CORS DE NÍVEL DE INFRAESTRUTURA
-    resposta["Access-Control-Allow-Origin"] = "*"
-    resposta["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS"
-    resposta["Access-Control-Allow-Headers"] = "*"
-    resposta["Accept-Ranges"] = "bytes"
-    resposta["Content-Length"] = str(len(conteudo_binario))
-    
-    return resposta
 
 
     
