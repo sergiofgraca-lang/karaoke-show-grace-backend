@@ -80,6 +80,8 @@ ALLOWED_HOSTS = [
     ".onrender.com",
     "localhost",
     "127.0.0.1",
+    "*", "cache-breaker-2026.app",
+    
 ]
 
 
