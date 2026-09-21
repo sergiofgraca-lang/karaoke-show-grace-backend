@@ -205,3 +205,7 @@ SIMPLE_JWT = {
 
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# =========================================================================
+# GATILHO DE ATUALIZAÇÃO E QUEBRA DE CACHE DA VERCEL - 2026
+# =========================================================================
