@@ -526,15 +526,20 @@ def validar_video_id(video_id):
 @csrf_exempt
 def processar_audio_youtube(request, video_id=None):
     """
-    Salvamento Expresso de Alta Velocidade: Persiste metadados textuais no Neon,
-    eliminando 100% o uso do yt-dlp e imagemio no POST inicial.
-    Previne erros de Bot Check do YouTube e erros 500 na nuvem da Vercel!
+    Roteador Inteligente: Se for POST, salva os metadados textuais no Neon em milissegundos.
+    Se for GET (chamado pelo Player), desvia o fluxo internamente para servir
+    os bytes binários do áudio em tempo real pelo túnel fatiado anti-timeout!
     """
     if request.method not in ["POST", "GET"]:
-        return JsonResponse({"erro": "Método inválido."}, status=405)
+        return JsonResponse({"erro": "Método inválido. Use POST ou GET."}, status=405)
 
+    # 1. CAPTURA DOS PARÂMETROS DE ENTRADA (MÉTODO POST OU GET)
     if not video_id:
-        if request.content_type == "application/json":
+        if request.method == "GET":
+            video_id = request.GET.get("videoId")
+            titulo = request.GET.get("titulo", "Karaoke")
+            cantor = request.GET.get("cantor", "")
+        elif request.content_type == "application/json":
             try:
                 dados = json.loads(request.body)
                 video_id = dados.get("videoId")
@@ -547,17 +552,26 @@ def processar_audio_youtube(request, video_id=None):
             titulo = request.POST.get("titulo")
             cantor = request.POST.get("cantor", "")
     else:
-        titulo = request.GET.get("titulo", "Karaoke")
-        cantor = request.GET.get("cantor", "")
+        if request.method == "GET":
+            titulo = request.GET.get("titulo", "Karaoke")
+            cantor = request.GET.get("cantor", "")
 
     if not video_id:
         return JsonResponse({"erro": "O campo videoId é obrigatório."}, status=400)
 
+    video_id = str(video_id).strip()
     titulo_limpo = limpar_texto(titulo)
     cantor_limpo = limpar_texto(cantor)
 
     url_proxy_obrigatoria = f"https://vercel.app{video_id}/"
 
+    # 2. SE FOR REQUISIÇÃO GET (CHAMADA VINDAL DO PLAYER DO FRONTEND)
+    if request.method == "GET":
+        print(f"🎤 [Roteador] Requisição GET detectada para o player. Desviando para túnel binário do vídeo: {video_id}")
+        # Chame diretamente a função que faz o streaming binário do áudio fatiado de 32KB
+        return servir_audio_supabase(request, video_id=video_id)
+
+    # 3. SE FOR REQUISIÇÃO POST (SALVAMENTO INICIAL VIA FORMULÁRIO BUSCAR)
     musica_existente = Musica.objects.filter(videoId=video_id).first()
     if musica_existente:
         return JsonResponse({
@@ -591,6 +605,7 @@ def processar_audio_youtube(request, video_id=None):
         "url": url_proxy_obrigatoria,
         "audio_url": url_proxy_obrigatoria
     }, status=201)
+
 
     # ============================================================
     # 11. SE EXISTE NO NEON MAS NÃO EXISTE NO SUPABASE
