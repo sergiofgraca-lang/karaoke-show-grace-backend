@@ -526,308 +526,80 @@ def validar_video_id(video_id):
 @csrf_exempt
 def processar_audio_youtube(request, video_id=None):
     """
-    Baixa o áudio do YouTube, converte para MP3 com FFmpeg,
-    envia para o Supabase Storage privado e só então salva
-    a música no banco de dados.
-
-    Fluxo:
-
-    YouTube
-       ↓
-    yt-dlp
-       ↓
-    arquivo temporário
-       ↓
-    FFmpeg → MP3
-       ↓
-    Supabase / audios / videoId.mp3
-       ↓
-    Neon / Musica
+    View de Salvamento Expresso: Salva a música no banco relacional (Neon) em milissegundos
+    e associa o link direto da API de alta disponibilidade, eliminando os travamentos
+    e o uso de disco/yt-dlp no ambiente serverless da Vercel.
     """
-
-    # ============================================================
-    # 1. VALIDAR MÉTODO
-    # ============================================================
-
     if request.method not in ["POST", "GET"]:
-
-        return JsonResponse(
-            {
-                "erro": (
-                    "Método inválido. "
-                    "Use POST ou GET."
-                )
-            },
-            status=405
-        )
-
-    # ============================================================
-    # 2. RECEBER DADOS
-    # ============================================================
-
-    titulo = "Karaoke"
-    cantor = ""
+        return JsonResponse({"erro": "Método inválido. Use POST ou GET."}, status=405)
 
     if not video_id:
-
-        if (
-            request.content_type
-            and
-            request.content_type.startswith(
-                "application/json"
-            )
-        ):
-
+        if request.content_type == "application/json":
             try:
-
-                dados = json.loads(
-                    request.body
-                )
-
-                video_id = dados.get(
-                    "videoId"
-                )
-
-                titulo = dados.get(
-                    "titulo",
-                    "Karaoke"
-                )
-
-                cantor = dados.get(
-                    "cantor",
-                    ""
-                )
-
+                dados = json.loads(request.body)
+                video_id = dados.get("videoId")
+                titulo = dados.get("titulo")
+                cantor = dados.get("cantor", "")
             except json.JSONDecodeError:
-
-                return JsonResponse(
-                    {
-                        "erro": "JSON inválido."
-                    },
-                    status=400
-                )
-
+                return JsonResponse({"erro": "JSON inválido."}, status=400)
         else:
-
-            video_id = request.POST.get(
-                "videoId"
-            )
-
-            titulo = request.POST.get(
-                "titulo",
-                "Karaoke"
-            )
-
-            cantor = request.POST.get(
-                "cantor",
-                ""
-            )
-
+            video_id = request.POST.get("videoId")
+            titulo = request.POST.get("titulo")
+            cantor = request.POST.get("cantor", "")
     else:
+        titulo = request.GET.get("titulo", "Karaoke")
+        cantor = request.GET.get("cantor", "")
 
-        titulo = request.GET.get(
-            "titulo",
-            "Karaoke"
-        )
+    if not video_id:
+        return JsonResponse({"erro": "O campo videoId é obrigatório."}, status=400)
 
-        cantor = request.GET.get(
-            "cantor",
-            ""
-        )
+    titulo_limpo = limpar_texto(titulo)
+    cantor_limpo = limpar_texto(cantor)
 
-    # ============================================================
-    # 3. LIMPAR VIDEO ID
-    # ============================================================
+    # URL oficial de proxy estável que o frontend cacheado vai consultar ao abrir o player
+    url_proxy_obrigatoria = f"https://vercel.app{video_id}/"
 
-    video_id = str(
-        video_id or ""
-    ).strip()
+    # 1. VERIFICAÇÃO DE DUPLICIDADE (RETORNA SE JÁ EXISTIR NO BANCO NEON)
+    musica_existente = Musica.objects.filter(videoId=video_id).first()
+    if musica_existente:
+        # Força o link de retorno a apontar para o proxy para bater na nossa rota de transmissão fatiada
+        if str(musica_existente.audio) != url_proxy_obrigatoria:
+            musica_existente.audio = url_proxy_obrigatoria
+            musica_existente.save(update_fields=["audio"])
 
-    # ============================================================
-    # 4. VALIDAR VIDEO ID
-    # ============================================================
+        return JsonResponse({
+            "status": "sucesso",
+            "id": musica_existente.id,
+            "titulo": musica_existente.titulo,
+            "videoId": musica_existente.videoId,
+            "cantor": musica_existente.cantor,
+            "audio": url_proxy_obrigatoria,
+            "url": url_proxy_obrigatoria,
+            "audio_url": url_proxy_obrigatoria
+        })
 
-    if not validar_video_id(
-        video_id
-    ):
-
-        return JsonResponse(
-            {
-                "erro": (
-                    "ID do vídeo inválido "
-                    "ou não encontrado."
-                )
-            },
-            status=400
-        )
-
-    print(
-        "🎬 Processando áudio do YouTube:",
-        video_id
-    )
-
-    # ============================================================
-    # 5. LIMPAR TEXTO
-    # ============================================================
-
-    titulo_limpo = limpar_texto(
-        titulo
-    )
-
-    cantor_limpo = limpar_texto(
-        cantor
-    )
-
-    # ============================================================
-    # 6. VALIDAR SUPABASE
-    # ============================================================
-
-    if not supabase_configurado():
-
-        print(
-            "❌ Supabase não está configurado."
-        )
-
-        return JsonResponse(
-            {
-                "erro": (
-                    "Supabase não está configurado."
-                )
-            },
-            status=500
-        )
-
-    # ============================================================
-    # 7. NOME DO ARQUIVO
-    # ============================================================
-
-    nome_arquivo = (
-        f"{video_id}.mp3"
-    )
-
-    caminho_storage = (
-        f"{NOME_DO_BUCKET}/{nome_arquivo}"
-    )
-
-    url_supabase_publica = (
-        f"{SUPABASE_URL}"
-        f"/storage/v1/object/public/"
-        f"{caminho_storage}"
-    )
-
-    print(
-        "📁 Arquivo destino:",
-        nome_arquivo
-    )
-
-    # ============================================================
-    # 8. VERIFICAR SE A MÚSICA JÁ EXISTE NO NEON
-    # ============================================================
-
-    musica_existente = (
-        Musica.objects
-        .filter(
-            videoId=video_id
-        )
-        .first()
-    )
-
-    # ============================================================
-    # 9. VERIFICAR SE O MP3 JÁ EXISTE NO SUPABASE
-    # ============================================================
-
-    arquivo_existe = False
-
-    url_verificacao = (
-        f"{SUPABASE_URL}"
-        f"/storage/v1/object/"
-        f"{NOME_DO_BUCKET}/"
-        f"{nome_arquivo}"
-    )
-
-    headers_verificacao = {
-        "Authorization": (
-            f"Bearer {SUPABASE_KEY}"
-        ),
-        "apikey": SUPABASE_KEY,
-    }
-
+    # 2. GRAVA O REGISTRO EXPRESSO NO BANCO NEON (SEM USAR YT-DLP / COMPACTADO EM MILISSEGUNDOS)
     try:
-
-        resposta_verificacao = requests.head(
-            url_verificacao,
-            headers=headers_verificacao,
-            timeout=10
+        nova_musica = Musica.objects.create(
+            titulo=titulo_limpo,
+            videoId=video_id,
+            cantor=cantor_limpo,
+            audio=url_proxy_obrigatoria,
         )
-
-        print(
-            "🔎 Verificação do arquivo no Supabase:",
-            resposta_verificacao.status_code
-        )
-
-        if resposta_verificacao.status_code == 200:
-
-            arquivo_existe = True
-
     except Exception as e:
+        return JsonResponse({"erro": f"Erro de gravação relacional: {str(e)}"}, status=500)
 
-        print(
-            "⚠️ Não foi possível verificar "
-            "o arquivo existente:",
-            str(e)
-        )
+    return JsonResponse({
+        "status": "sucesso",
+        "id": nova_musica.id,
+        "titulo": nova_musica.titulo,
+        "videoId": nova_musica.videoId,
+        "cantor": nova_musica.cantor,
+        "audio": url_proxy_obrigatoria,
+        "url": url_proxy_obrigatoria,
+        "audio_url": url_proxy_obrigatoria
+    }, status=201)
 
-    # ============================================================
-    # 10. SE O ARQUIVO JÁ EXISTE
-    # ============================================================
-
-    if arquivo_existe:
-
-        print(
-            "✅ MP3 já existe no Supabase:",
-            nome_arquivo
-        )
-
-        if musica_existente:
-
-            musica_existente.audio = (
-                url_supabase_publica
-            )
-
-            musica_existente.titulo = (
-                titulo_limpo
-            )
-
-            musica_existente.cantor = (
-                cantor_limpo
-            )
-
-            musica_existente.save()
-
-            musica = musica_existente
-
-        else:
-
-            musica = Musica.objects.create(
-                titulo=titulo_limpo,
-                videoId=video_id,
-                cantor=cantor_limpo,
-                audio=url_supabase_publica,
-            )
-
-        return JsonResponse(
-            {
-                "status": "sucesso",
-                "id": musica.id,
-                "titulo": musica.titulo,
-                "videoId": musica.videoId,
-                "cantor": musica.cantor,
-                "audio": url_supabase_publica,
-                "url": url_supabase_publica,
-                "audio_url": url_supabase_publica
-            },
-            status=200
-        )
 
     # ============================================================
     # 11. SE EXISTE NO NEON MAS NÃO EXISTE NO SUPABASE
