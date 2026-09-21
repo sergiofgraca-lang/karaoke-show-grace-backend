@@ -32,3 +32,4 @@ urlpatterns = [
     path("audio/<str:video_id>/", servir_audio_supabase),
     path("audio-arquivo/<str:video_id>/", servir_audio_supabase),
 ]
+# Force Deploy: 09/20/2026 22:33:46
