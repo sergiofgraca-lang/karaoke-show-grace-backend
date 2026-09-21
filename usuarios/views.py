@@ -290,239 +290,219 @@ def gerar_url_assinada_supabase(video_id, segundos=3600):
 
 
 
-# =========================================================================
-# OPERAÇÕES DE DIAGNÓSTICO DO PROVEDOR DE INFRAESTRUTURA
-# =========================================================================
-
 @csrf_exempt
 def teste_bgutil(request):
     """
-    Diagnóstico temporário Vercel -> Render/bgutil remoto.
+    Diagnóstico temporário:
+    testa o yt-dlp na extração do YouTube,
+    sem download, sem FFmpeg e sem Supabase.
     """
+
     video_id = "8cr4wfJuTNw"
-    url = f"https://youtube.com{video_id}"
+    url = f"https://www.youtube.com/watch?v={video_id}"
+
+    inicio = time.perf_counter()
+
     resultado = {
         "video_id": video_id,
         "url": url,
-        "etapa": "iniciando_diagnostico_remoto",
+        "etapa": "iniciando",
     }
+
+    # Teste direto de conectividade com o bgutil Render
     resultado["teste_bgutil_ping"] = {
-        "url": "https://onrender.com",
+        "url": "https://bgutil-ytdlp-pot-provider-0f67.onrender.com/ping",
         "ok": False,
         "status": None,
         "resposta": "",
         "erro": "",
     }
+
     try:
         resposta_ping = requests.get(
-            "https://onrender.com",
+            "https://bgutil-ytdlp-pot-provider-0f67.onrender.com/ping",
             timeout=10,
         )
+
         resultado["teste_bgutil_ping"]["status"] = resposta_ping.status_code
         resultado["teste_bgutil_ping"]["resposta"] = resposta_ping.text[:1000]
-        resultado["teste_bgutil_ping"]["ok"] = (resposta_ping.status_code == 200)
-    except Exception as e:
-        resultado["teste_bgutil_ping"]["erro"] = f"{type(e).__name__}: {str(e)}"
-        
-    return JsonResponse(resultado)
+        resultado["teste_bgutil_ping"]["ok"] = (
+            resposta_ping.status_code == 200
+        )
+
+    except Exception as erro_ping:
+        resultado["teste_bgutil_ping"]["erro"] = (
+            f"{type(erro_ping).__name__}: {erro_ping}"
+        )
+
+    try:
+        qjs_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "runtime",
+            "qjs",
+        )
+
+        resultado["ambiente"] = {
+            "python": os.sys.version,
+            "yt_dlp": getattr(yt_dlp, "__version__", "desconhecido"),
+            "node": shutil.which("node"),
+            "deno": shutil.which("deno"),
+            "qjs_path": qjs_path,
+            "qjs_existe": os.path.exists(qjs_path),
+            "qjs_executavel": os.access(qjs_path, os.X_OK),
+        }
 
 
-@csrf_exempt
-def testar_youtube(request):
-    """
-    Validação auxiliar de ping de rede.
-    """
-    return JsonResponse({"status": "Serviço de busca ativo", "timestamp": time.time()})
+        resultado["runtime_candidatos"] = {
+            caminho: {
+                "existe": os.path.exists(caminho),
+                "executavel": os.path.isfile(caminho) and os.access(caminho, os.X_OK),
+            }
+            for caminho in [
+                "/usr/bin/node",
+                "/usr/local/bin/node",
+                "/opt/bin/node",
+                "/var/task/node",
+                "/var/task/nodejs/node",
+                "/usr/bin/deno",
+                "/usr/local/bin/deno",
+                "/opt/bin/deno",
+                "/var/task/deno",
+                "/usr/bin/bun",
+                "/usr/local/bin/bun",
+                "/opt/bin/bun",
+                "/var/task/bun",
+                "/usr/bin/qjs",
+                "/usr/local/bin/qjs",
+                "/opt/bin/qjs",
+            ]
+        }
 
+        # Teste real de execução do QuickJS
+        resultado["teste_qjs_execucao"] = {
+            "tentado": False,
+            "ok": False,
+            "saida": "",
+            "erro": "",
+        }
 
-# =========================================================================
-# ENGENHARIA DE SALVAMENTO EXPRESSO (PERSISTÊNCIA RELACIONAL EM NEON)
-# =========================================================================
+        if os.path.isfile(qjs_path) and os.access(qjs_path, os.X_OK):
+            resultado["teste_qjs_execucao"]["tentado"] = True
 
-@csrf_exempt
-def processar_audio_youtube(request, video_id=None):
-    """
-    Roteador Expresso: Grava metadados textuais no Neon em milissegundos,
-    eliminando por completo o uso de yt-dlp e imagemio no POST inicial.
-    Anula falhas de Bot Check do YouTube e erros 500 na nuvem da Vercel!
-    """
-    if request.method not in ["POST", "GET"]:
-        return JsonResponse({"erro": "Método inválido de requisição. Use POST ou GET."}, status=405)
-
-    if not video_id:
-        if request.content_type == "application/json":
             try:
-                dados = json.loads(request.body)
-                video_id = dados.get("videoId")
-                titulo = dados.get("titulo")
-                cantor = dados.get("cantor", "")
-            except json.JSONDecodeError:
-                return JsonResponse({"erro": "Estrutura JSON inválida."}, status=400)
-        else:
-            video_id = request.POST.get("videoId")
-            titulo = request.POST.get("titulo")
-            cantor = request.POST.get("cantor", "")
-    else:
-        titulo = request.GET.get("titulo", "Karaoke")
-        cantor = request.GET.get("cantor", "")
+                teste_qjs = subprocess.run(
+                    [qjs_path, "-e", "print(1 + 2)"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
 
-    if not video_id:
-        return JsonResponse({"erro": "O parâmetro videoId é obrigatório."}, status=400)
+                resultado["teste_qjs_execucao"]["ok"] = (
+                    teste_qjs.returncode == 0
+                    and teste_qjs.stdout.strip() == "3"
+                )
+                resultado["teste_qjs_execucao"]["saida"] = (
+                    teste_qjs.stdout.strip()
+                )
+                resultado["teste_qjs_execucao"]["erro"] = (
+                    teste_qjs.stderr.strip()
+                )
 
-    titulo_limpo = limpar_texto(titulo)
-    cantor_limpo = limpar_texto(cantor)
+            except Exception as erro_qjs:
+                resultado["teste_qjs_execucao"]["erro"] = (
+                    f"{type(erro_qjs).__name__}: {erro_qjs}"
+                )
 
-    # Rota fixa que o frontend cacheado index-DwTHmjLo.js busca obrigatoriamente
-    url_proxy_obrigatoria = f"https://vercel.app{video_id}/"
+        resultado["etapa"] = "criando_youtube_dl"
 
-    # 1. VALIDAÇÃO DE DUPLICIDADE (RETORNA SE JÁ EXISTIR NO NEON)
-    musica_existente = Musica.objects.filter(videoId=video_id).first()
-    if musica_existente:
-        if str(musica_existente.audio) != url_proxy_obrigatoria:
-            musica_existente.audio = url_proxy_obrigatoria
-            musica_existente.save(update_fields=["audio"])
+        ydl_opts = {
+            "quiet": False,
+                "no_warnings": False,
+                "nocheckcertificate": True,
 
-        return JsonResponse({
-            "status": "sucesso",
-            "id": musica_existente.id,
-            "titulo": musica_existente.titulo,
-            "videoId": musica_existente.videoId,
-            "cantor": musica_existente.cantor,
-            "audio": url_proxy_obrigatoria,
-            "url": url_proxy_obrigatoria,
-            "audio_url": url_proxy_obrigatoria
+                "fetch_pot": "always",
+
+            "js_runtimes": {
+                "quickjs": {
+                    "path": qjs_path,
+                }
+            },
+
+            "extractor_args": {
+                "youtubepot-bgutilhttp": {
+                    "base_url": (
+                        "https://bgutil-ytdlp-pot-provider-0f67"
+                        ".onrender.com"
+                    )
+                }
+            },
+        }
+
+        resultado["ydl_opts"] = {
+                "fetch_pot": "always",
+            "js_runtimes": {
+                "quickjs": {
+                    "path": qjs_path,
+                }
+            },
+            "bgutil_base_url": (
+                "https://bgutil-ytdlp-pot-provider-0f67"
+                ".onrender.com"
+            ),
+        }
+
+        resultado["etapa"] = "extraindo_info"
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(
+                url,
+                download=False,
+            )
+
+        formatos = info.get("formats") or []
+
+        formatos_audio = []
+
+        for formato in formatos:
+            if formato.get("acodec") not in (None, "none"):
+                formatos_audio.append({
+                    "format_id": formato.get("format_id"),
+                    "ext": formato.get("ext"),
+                    "acodec": formato.get("acodec"),
+                    "abr": formato.get("abr"),
+                    "tbr": formato.get("tbr"),
+                    "vcodec": formato.get("vcodec"),
+                })
+
+        resultado.update({
+            "ok": True,
+            "etapa": "extracao_concluida",
+            "tempo_segundos": round(
+                time.perf_counter() - inicio,
+                3,
+            ),
+            "titulo": info.get("title"),
+            "uploader": info.get("uploader"),
+            "extractor": info.get("extractor"),
+            "extractor_key": info.get("extractor_key"),
+            "formatos_total": len(formatos),
+            "formatos_audio": formatos_audio,
         })
 
-    # 2. GRAVAÇÃO EXPRESSA DE ALTA DISPONIBILIDADE NO BANCO RELACIONAL
-    try:
-        nova_musica = Musica.objects.create(
-            titulo=titulo_limpo,
-            videoId=video_id,
-            cantor=cantor_limpo,
-            audio=url_proxy_obrigatoria,
-        )
     except Exception as e:
-        return JsonResponse({"erro": f"Erro na tabela Neon: {str(e)}"}, status=500)
 
-    return JsonResponse({
-        "status": "sucesso",
-        "id": nova_musica.id,
-        "titulo": nova_musica.titulo,
-        "videoId": nova_musica.videoId,
-        "cantor": nova_musica.cantor,
-        "audio": url_proxy_obrigatoria,
-        "url": url_proxy_obrigatoria,
-        "audio_url": url_proxy_obrigatoria
-    }, status=201)
+        resultado.update({
+            "ok": False,
+            "etapa": "erro_extracao",
+            "tempo_segundos": round(
+                time.perf_counter() - inicio,
+                3,
+            ),
+            "erro_tipo": type(e).__name__,
+            "erro": str(e),
+        })
 
-
-# =========================================================================
-# PROXY DE STREAMING EM CHUNKS (TÚNEL DE ALTA VELOCIDADE ANTI-TIMEOUT)
-# =========================================================================
-from django.http import StreamingHttpResponse
-
-@csrf_exempt
-def servir_audio_supabase(request, video_id):
-    """
-    Túnel Fracionado: Captura os bytes do conversor de alta disponibilidade
-    e repassa para o Tone.js fatiado em pedaços contínuos de 32KB.
-    Bula o limite de payload da Vercel (4.5MB), quebra o CORS e toca o áudio!
-    """
-    video_id = str(video_id).strip()
-    url_fonte_audio = f"https://vevioz.com{video_id}"
-    
-    print(f"📡 [Túnel Ativo] Iniciando transmissão fracionada em chunks de 32KB para: {video_id}")
-    
-    try:
-        resposta_fonte = requests.get(url_fonte_audio, stream=True, timeout=12)
-        
-        if resposta_fonte.status_code >= 300 and supabase_configurado():
-            url_supabase = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{video_id}.mp3"
-            resposta_fonte = requests.get(url_supabase, stream=True, timeout=12)
-            
-        resposta = StreamingHttpResponse(
-            resposta_fonte.iter_content(chunk_size=32768),
-            status=resposta_fonte.status_code,
-            content_type="audio/mp3"
-        )
-        
-        # INJEÇÃO EXPÚLCITA DE CABEÇALHOS CORS DE RECURSO
-        resposta["Access-Control-Allow-Origin"] = "*"
-        resposta["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS"
-        resposta["Access-Control-Allow-Headers"] = "*"
-        resposta["Accept-Ranges"] = "bytes"
-        
-        if "Content-Length" in resposta_fonte.headers:
-            resposta["Content-Length"] = resposta_fonte.headers["Content-Length"]
-            
-        return resposta
-
-    except Exception as e:
-        print(f"❌ Falha crítica no pipeline binário: {repr(e)}")
-        from django.http import HttpResponse
-        return HttpResponse(b"", content_type="audio/mp3", status=404)
-
-
-# =========================================================================
-# OPERAÇÕES DE LEITURA E CONSULTA DA PLAYLIST
-# =========================================================================
-
-@csrf_exempt
-def audio_da_musica(request, video_id):
-    """
-    Redireciona consultas textuais da lista de forma dinâmica para o proxy.
-    """
-    url_proxy = f"https://vercel.app{video_id}/"
-    return JsonResponse({
-        "status": "sucesso",
-        "audio": url_proxy,
-        "url": url_proxy,
-        "audio_url": url_proxy
-    })
-
-
-@csrf_exempt
-def listar_musicas(request):
-    """
-    Retorna a playlist completa de músicas salvas no Neon.
-    """
-    try:
-        musicas = Musica.objects.all().order_by("-id")
-        lista = [{
-            "id": m.id,
-            "titulo": m.titulo,
-            "videoId": m.videoId,
-            "cantor": m.cantor,
-            "audio": m.audio
-        } for m in musicas]
-        return JsonResponse(lista, safe=False)
-    except Exception as e:
-        return JsonResponse({"erro": str(e)}, status=500)
-
-
-@csrf_exempt
-def deletar_musica(request, id):
-    try:
-        musica = Musica.objects.get(id=id)
-        musica.delete()
-        return JsonResponse({"status": "sucesso"})
-    except Musica.DoesNotExist:
-        return JsonResponse({"erro": "Música não localizada"}, status=404)
-
-
-@csrf_exempt
-def ranking(request):
-    dados = Musica.objects.values("cantor").annotate(total=Count("id")).order_by("-total")
-    return JsonResponse(list(dados), safe=False)
-
-@csrf_exempt
-def listar_audios(request):
-    return JsonResponse({"status": "Disponivel"})
-
-@csrf_exempt
-def associar_audio(request):
-    return JsonResponse({"status": "Sucesso"})
-
+    return JsonResponse(resultado)
 
 def validar_video_id(video_id):
     """
@@ -867,8 +847,6 @@ def processar_audio_youtube(request, video_id=None):
     # ============================================================
     # 12. CRIAR DIRETÓRIO TEMPORÁRIO
     # ============================================================
-
-    import tempfile
 
     pasta_temporaria = tempfile.mkdtemp(
         prefix="karaoke_audio_"
@@ -1995,37 +1973,93 @@ def encontrar_audio(video_id):
 # BUSCAR ÁUDIO DE UMA MÚSICA
 # ============================================================
 
-@csrf_exempt
 def servir_audio_supabase(request, video_id):
     """
-    TÚNEL BINÁRIO DE ALTA DISPONIBILIDADE: Entrega uma resposta estática
-    compacta limitando o tamanho para evitar os timeouts e bloqueios da Vercel.
+    Entrega o MP3 privado do Supabase através do Django.
     """
-    video_id = str(video_id).strip()
-    url_fonte_audio = f"https://vevioz.com{video_id}"
-    
+
+    if request.method != "GET":
+        return JsonResponse(
+            {"erro": "Método não permitido."},
+            status=405
+        )
+
+    if not video_id:
+        return JsonResponse(
+            {"erro": "videoId não informado."},
+            status=400
+        )
+
+    print(
+        "🎧 Servindo áudio pelo Django:",
+        video_id
+    )
+
+    # Gera uma URL temporária para o arquivo privado
+    signed_url = gerar_url_assinada_supabase(
+        video_id,
+        segundos=3600
+    )
+
+    print("🔗 URL assinada:", signed_url)
+
+    if not signed_url:
+        print(
+            "❌ Não foi possível gerar URL do áudio."
+        )
+
+        return JsonResponse(
+            {"erro": "Áudio não encontrado."},
+            status=404
+        )
+
     try:
-        # Puxa apenas os primeiros 3.5MB de áudio em background (evita o limite de 4.5MB da Vercel)
-        headers = {"Range": "bytes=0-3500000"}
-        resposta_fonte = requests.get(url_fonte_audio, headers=headers, timeout=8)
-        
-        if resposta_fonte.status_code >= 300 and supabase_configurado():
-            url_supabase = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{video_id}.mp3"
-            resposta_fonte = requests.get(url_supabase, headers=headers, timeout=8)
-            
-        resposta = HttpResponse(resposta_fonte.content, content_type="audio/mp3")
-        
-        # CABEÇALHOS CORS EXPLICITOS PARA ACORDAR O TONE.JS EM CACHE
-        resposta["Access-Control-Allow-Origin"] = "*"
-        resposta["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS"
-        resposta["Access-Control-Allow-Headers"] = "*"
-        resposta["Accept-Ranges"] = "bytes"
-        resposta["Content-Length"] = str(len(resposta_fonte.content))
-        
-        return resposta
+        resposta = requests.get(
+            signed_url,
+            timeout=30
+        )
+
+        print(
+            "📥 Supabase respondeu:",
+            resposta.status_code,
+            "Tamanho:",
+            len(resposta.content)
+        )
+
+        if resposta.status_code != 200:
+            print(
+                "❌ Erro ao baixar áudio do Supabase:",
+                resposta.text[:500]
+            )
+
+            return JsonResponse(
+                {"erro": "Não foi possível obter o áudio."},
+                status=404
+            )
+
+        response = HttpResponse(
+            resposta.content,
+            content_type="audio/mpeg"
+        )
+
+        response["Content-Length"] = str(
+            len(resposta.content)
+        )
+
+        response["Cache-Control"] = "no-cache"
+
+        return response
+
     except Exception as e:
-        print(f"❌ Erro no proxy binário: {repr(e)}")
-        return HttpResponse(b"", content_type="audio/mp3", status=404)
+        print(
+            "❌ Erro servindo áudio:",
+            str(e)
+        )
+
+        return JsonResponse(
+            {"erro": "Erro interno ao carregar áudio."},
+            status=500
+        )
 
 
 def audio_da_musica(
