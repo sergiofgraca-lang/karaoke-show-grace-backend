@@ -217,3 +217,8 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # FORCE DEPLOY CACHE BREAKER - ATIVAÇÃO MODO EXPRESSO DE KARAOKE
 # =========================================================================
 
+# =========================================================================
+# FORÇAR RECOMPILAÇÃO DE ROTAS - QUEBRA DE CACHE TOTAL VERCEL 2026
+# =========================================================================
+
+
