@@ -27,4 +27,4 @@ urlpatterns = [
     path("audio/<str:video_id>/", servir_audio_supabase),
     path("audio-arquivo/<str:video_id>/", servir_audio_supabase),
 ]
-
+"@
