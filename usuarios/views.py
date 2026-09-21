@@ -525,6 +525,8 @@ def validar_video_id(video_id):
 
 from django.shortcuts import redirect
 
+from django.shortcuts import redirect
+
 @csrf_exempt
 def processar_audio_youtube(request, video_id=None):
     """
@@ -597,6 +599,7 @@ def processar_audio_youtube(request, video_id=None):
         "videoId": nova_musica.videoId, "cantor": nova_musica.cantor,
         "audio": url_proxy_obrigatoria, "url": url_proxy_obrigatoria, "audio_url": url_proxy_obrigatoria
     }, status=201)
+
 
 
 
