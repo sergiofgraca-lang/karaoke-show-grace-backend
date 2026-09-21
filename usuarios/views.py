@@ -607,6 +607,7 @@ def processar_audio_youtube(request, video_id=None):
     }, status=201)
 
 
+
     # ============================================================
     # 11. SE EXISTE NO NEON MAS NÃO EXISTE NO SUPABASE
     # ============================================================
