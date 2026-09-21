@@ -600,6 +600,39 @@ def processar_audio_youtube(request, video_id=None):
         "audio": url_proxy_obrigatoria, "url": url_proxy_obrigatoria, "audio_url": url_proxy_obrigatoria
     }, status=201)
 
+        # 2. SE FOR REQUISIÇÃO GET (CHAMADA VINDA DO PLAYER DO FRONTEND)
+    if request.method == "GET":
+        # URL estável oficial da API do conversor rápido de alta disponibilidade
+        url_fonte = f"https://vevioz.com{video_id}"
+        
+        print(f"📡 [Túnel Binário] Baixando áudio em background para o player: {video_id}")
+        
+        try:
+            # Puxa o arquivo binário completo em background de forma super rápida
+            resposta_fonte = requests.get(url_fonte, timeout=10)
+            
+            # Se a API falhar, tenta buscar direto no seu bucket do Supabase Storage
+            if resposta_fonte.status_code >= 300:
+                url_supabase = f"https://supabase.co{video_id}.mp3"
+                resposta_fonte = requests.get(url_supabase, timeout=10)
+
+            # Cria uma resposta HttpResponse estática com os bytes puros do som
+            resposta = HttpResponse(resposta_fonte.content, content_type="audio/mp3")
+            
+            # INJEÇÃO RIGOROSA DE CABEÇALHOS CORS PARA O TONE.JS RECONHECER O BUFFER
+            resposta["Access-Control-Allow-Origin"] = "*"
+            resposta["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS"
+            resposta["Access-Control-Allow-Headers"] = "*"
+            resposta["Accept-Ranges"] = "bytes"
+            resposta["Content-Length"] = str(len(resposta_fonte.content))
+            
+            return resposta
+            
+        except Exception as e:
+            print(f"❌ Falha no túnel binário: {repr(e)}")
+            return HttpResponse(b"", content_type="audio/mp3", status=404)
+
+
 
 
 
