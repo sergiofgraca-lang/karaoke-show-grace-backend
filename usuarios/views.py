@@ -12,176 +12,13 @@ import imageio_ffmpeg
 import requests
 import yt_dlp
 
-from django.http import StreamingHttpResponse, JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from .models import Musica
-
 from django.conf import settings
 from django.db.models import Count
 from django.http import JsonResponse, HttpResponse
-from django.http import StreamingHttpResponse, JsonResponse
-from django.http import HttpResponseRedirect
+from django.views.decorators.csrf import csrf_exempt
 
 from yt_dlp.globals import plugin_dirs
 from yt_dlp.plugins import load_all_plugins
-
-from django.shortcuts import redirect
-
-from django.http import JsonResponse
-
-@csrf_exempt
-def audio_da_musica(request, video_id):
-    """
-    Túnel de Mídia por Pedaços: Consome os bytes brutos do conversor estável
-    e os transmite em blocos de 64KB para o Tone.js.
-    Engana o frontend em cache, destrava o CORS e anula o limite de tamanho da Vercel!
-    """
-    video_id = str(video_id).strip()
-    
-    # URL oficial com as barras e subdomínio do conversor de alta disponibilidade
-    url_fonte_audio = f"https://vevioz.com{video_id}"
-    
-    print(f"📡 Abrindo túnel de streaming por blocos para o áudio: {video_id}")
-    
-    try:
-        # Abrimos a conexão em modo streaming diretamente na fonte externa
-        resposta_fonte = requests.get(url_fonte_audio, stream=True, timeout=12)
-        
-        # Se a fonte falhar, tenta buscar o link direto público do seu Supabase Storage
-        if resposta_fonte.status_code >= 300 and SUPABASE_URL:
-            url_supabase = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{video_id}.mp3"
-            resposta_fonte = requests.get(url_supabase, stream=True, timeout=12)
-            
-        # Cria a resposta de streaming nativa fatiando o som em blocos leves de 64KB
-        resposta = StreamingHttpResponse(
-            resposta_fonte.iter_content(chunk_size=65536),
-            status=resposta_fonte.status_code,
-            content_type="audio/mp3"
-        )
-        
-        # INJEÇÃO COMPLETA DE CABEÇALHOS CORS DE NÍVEL DE REDE
-        resposta["Access-Control-Allow-Origin"] = "*"
-        resposta["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS"
-        resposta["Access-Control-Allow-Headers"] = "*"
-        resposta["Accept-Ranges"] = "bytes"
-        
-        return resposta
-
-    except Exception as e:
-        print(f"❌ Falha no túnel de áudio {video_id}: {repr(e)}")
-        return HttpResponse(b"", content_type="audio/mp3", status=404)
-
-@csrf_exempt
-def audio_da_musica(request, video_id):
-    """
-    Controla o ponto de entrada da Playlist entregando os metadados.
-    """
-    video_id = str(video_id).strip()
-    try:
-        musica = Musica.objects.filter(videoId=video_id).first()
-    except Exception as e:
-        return JsonResponse({"erro": str(e)}, status=500)
-
-    if not musica:
-        return JsonResponse({"erro": "Música não encontrada.", "videoId": video_id}, status=404)
-
-    url_proxy_obrigatoria = f"https://vercel.app{video_id}/"
-
-    return JsonResponse({
-        "status": "sucesso",
-        "titulo": musica.titulo,
-        "videoId": musica.videoId,
-        "audio": url_proxy_obrigatoria,
-        "url": url_proxy_obrigatoria,
-        "audio_url": url_proxy_obrigatoria
-    })
-
-import requests
-from django.http import HttpResponse
-from django.views.decorators.csrf import csrf_exempt
-
-@csrf_exempt
-def servir_audio_supabase(request, video_id):
-    """
-    Túnel Binário Direto: Consome os bytes brutos do áudio da API em background
-    e os entrega de uma vez só encapsulados em um HttpResponse nativo.
-    Dribla 100% os bloqueios de streaming da Vercel e o CORS do navegador!
-    """
-    video_id = str(video_id).strip()
-    
-    # URL estável oficial da API do conversor rápido
-    url_fonte_audio = f"https://vevioz.com{video_id}"
-    
-    print(f"📡 [Túnel Expresso] Disparando transferência binária direta para o áudio: {video_id}")
-    
-    try:
-        # Faz uma requisição simples e rápida para obter todo o conteúdo binário
-        resposta_fonte = requests.get(url_fonte_audio, timeout=12)
-        
-        # Se a fonte falhar, tenta buscar o link direto público do seu Supabase Storage
-        if resposta_fonte.status_code >= 300 and SUPABASE_URL:
-            url_supabase = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{video_id}.mp3"
-            resposta_fonte = requests.get(url_supabase, timeout=12)
-            
-        # Cria um HttpResponse bruto injetando os bytes direto na memória do navegador
-        resposta = HttpResponse(resposta_fonte.content, content_type="audio/mp3")
-        
-        # INJEÇÃO UNIVERSAL DE CABEÇALHOS CORS PARA O TONE.JS RECONHECER O SOM
-        resposta["Access-Control-Allow-Origin"] = "*"
-        resposta["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS"
-        resposta["Access-Control-Allow-Headers"] = "*"
-        resposta["Accept-Ranges"] = "bytes"
-        resposta["Content-Length"] = str(len(resposta_fonte.content))
-        
-        return resposta
-
-    except Exception as e:
-        print(f"❌ Falha crítica no túnel binário do áudio {video_id}: {repr(e)}")
-        return HttpResponse(b"", content_type="audio/mp3", status=404)
-
-
-    
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'quiet': True,
-        'no_warnings': True,
-        'skip_download': True,
-    }
-    
-    try:
-        print(f"📡 Descriptografando stream oficial do YouTube para o vídeo: {video_id}")
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url_youtube, download=False)
-            stream_url = info.get('url', '')
-            
-            if stream_url:
-                # Conecta diretamente na fonte de áudio de alta velocidade do Google Video CDN
-                resposta_stream = requests.get(stream_url, stream=True, timeout=15)
-                
-                # Transmite blocos de 32KB em tempo real (Não atinge o limite de payload da Vercel)
-                resposta = StreamingHttpResponse(
-                    resposta_stream.iter_content(chunk_size=32768),
-                    status=resposta_stream.status_code,
-                    content_type="audio/mp3"
-                )
-                
-                # INJEÇÃO OBRIGATÓRIA DE CABEÇALHOS DE ORIGEM CRUZADA (CORS)
-                resposta["Access-Control-Allow-Origin"] = "*"
-                resposta["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS"
-                resposta["Access-Control-Allow-Headers"] = "*"
-                resposta["Accept-Ranges"] = "bytes"
-                
-                return resposta
-                
-    except Exception as e:
-        print(f"⚠️ Erro no túnel dinâmico: {repr(e)}")
-        
-    # Contingência Secundária se o IP da Vercel estiver sob forte estresse
-    from django.shortcuts import redirect
-    return redirect(f"https://vevioz.com{video_id}")
-
-
-
 
 def limpar_texto(texto):
     """
@@ -461,10 +298,6 @@ def teste_bgutil(request):
     sem download, sem FFmpeg e sem Supabase.
     """
 
-    import time
-    import shutil
-    import yt_dlp
-
     video_id = "8cr4wfJuTNw"
     url = f"https://www.youtube.com/watch?v={video_id}"
 
@@ -486,8 +319,6 @@ def teste_bgutil(request):
     }
 
     try:
-        import requests
-
         resposta_ping = requests.get(
             "https://bgutil-ytdlp-pot-provider-0f67.onrender.com/ping",
             timeout=10,
@@ -694,119 +525,309 @@ def validar_video_id(video_id):
 
 @csrf_exempt
 def processar_audio_youtube(request, video_id=None):
-    # Aceita requisições tanto de Criar (POST) quanto de Consultar Playlist (GET)
+    """
+    Baixa o áudio do YouTube, converte para MP3 com FFmpeg,
+    envia para o Supabase Storage privado e só então salva
+    a música no banco de dados.
+
+    Fluxo:
+
+    YouTube
+       ↓
+    yt-dlp
+       ↓
+    arquivo temporário
+       ↓
+    FFmpeg → MP3
+       ↓
+    Supabase / audios / videoId.mp3
+       ↓
+    Neon / Musica
+    """
+
+    # ============================================================
+    # 1. VALIDAR MÉTODO
+    # ============================================================
+
     if request.method not in ["POST", "GET"]:
-        return JsonResponse({"erro": "Método inválido. Use POST ou GET."}, status=405)
+
+        return JsonResponse(
+            {
+                "erro": (
+                    "Método inválido. "
+                    "Use POST ou GET."
+                )
+            },
+            status=405
+        )
+
+    # ============================================================
+    # 2. RECEBER DADOS
+    # ============================================================
+
+    titulo = "Karaoke"
+    cantor = ""
 
     if not video_id:
-        if request.content_type == "application/json":
+
+        if (
+            request.content_type
+            and
+            request.content_type.startswith(
+                "application/json"
+            )
+        ):
+
             try:
-                dados = json.loads(request.body)
-                video_id = dados.get("videoId")
-                titulo = dados.get("titulo")
-                cantor = dados.get("cantor", "")
+
+                dados = json.loads(
+                    request.body
+                )
+
+                video_id = dados.get(
+                    "videoId"
+                )
+
+                titulo = dados.get(
+                    "titulo",
+                    "Karaoke"
+                )
+
+                cantor = dados.get(
+                    "cantor",
+                    ""
+                )
+
             except json.JSONDecodeError:
-                return JsonResponse({"erro": "JSON inválido."}, status=400)
+
+                return JsonResponse(
+                    {
+                        "erro": "JSON inválido."
+                    },
+                    status=400
+                )
+
         else:
-            video_id = request.POST.get("videoId")
-            titulo = request.POST.get("titulo")
-            cantor = request.POST.get("cantor", "")
+
+            video_id = request.POST.get(
+                "videoId"
+            )
+
+            titulo = request.POST.get(
+                "titulo",
+                "Karaoke"
+            )
+
+            cantor = request.POST.get(
+                "cantor",
+                ""
+            )
+
     else:
-        titulo = request.GET.get("titulo", "Karaoke")
-        cantor = request.GET.get("cantor", "")
 
-    if not video_id:
-        return JsonResponse({"erro": "O campo videoId é obrigatório."}, status=400)
+        titulo = request.GET.get(
+            "titulo",
+            "Karaoke"
+        )
 
-    titulo_limpo = limpar_texto(titulo)
-    cantor_limpo = limpar_texto(cantor)
+        cantor = request.GET.get(
+            "cantor",
+            ""
+        )
 
-    # URLs padrão de envio e a API estável de contingência
-    url_conversor_alternativo = f"https://vevioz.com{video_id}"
-    url_supabase_obrigatoria = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{video_id}.mp3" if supabase_configurado() else url_conversor_alternativo
+    # ============================================================
+    # 3. LIMPAR VIDEO ID
+    # ============================================================
 
-       # 1. VERIFICAÇÃO DE DUPLICIDADE (MÚSICAS JÁ CADASTRADAS)
-    musica_existente = Musica.objects.filter(videoId=video_id).first()
-    if musica_existente:
-        # Garante a construção do link público direto do bucket CDN do Supabase Storage
-        url_retorno = str(musica_existente.audio)
-        if "vevioz" in url_retorno or not url_retorno.startswith("http") or "audio-arquivo" in url_retorno:
-            url_retorno = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{video_id}.mp3"
-            musica_existente.audio = url_retorno
-            musica_existente.save()
+    video_id = str(
+        video_id or ""
+    ).strip()
 
-        return JsonResponse({
-            "status": "sucesso",
-            "id": musica_existente.id,
-            "titulo": musica_existente.titulo,
-            "videoId": musica_existente.videoId,
-            "cantor": musica_existente.cantor,
-            # SOLUÇÃO DEFINITIVA: Força o Tone.js a ler a CDN direta super rápida, ignorando o proxy
-            "audio": url_retorno,
-            "url": url_retorno,
-            "audio_url": url_retorno
-        })
+    # ============================================================
+    # 4. VALIDAR VIDEO ID
+    # ============================================================
 
+    if not validar_video_id(
+        video_id
+    ):
 
-    # 2. CAPTURA O ÁUDIO - BLINDAGEM DUPLA CONTRA BLOQUEIO DE BOTS
-    url_audio_final = ""
-    
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'quiet': True,
-        'no_warnings': True,
-        'skip_download': True,
+        return JsonResponse(
+            {
+                "erro": (
+                    "ID do vídeo inválido "
+                    "ou não encontrado."
+                )
+            },
+            status=400
+        )
+
+    print(
+        "🎬 Processando áudio do YouTube:",
+        video_id
+    )
+
+    # ============================================================
+    # 5. LIMPAR TEXTO
+    # ============================================================
+
+    titulo_limpo = limpar_texto(
+        titulo
+    )
+
+    cantor_limpo = limpar_texto(
+        cantor
+    )
+
+    # ============================================================
+    # 6. VALIDAR SUPABASE
+    # ============================================================
+
+    if not supabase_configurado():
+
+        print(
+            "❌ Supabase não está configurado."
+        )
+
+        return JsonResponse(
+            {
+                "erro": (
+                    "Supabase não está configurado."
+                )
+            },
+            status=500
+        )
+
+    # ============================================================
+    # 7. NOME DO ARQUIVO
+    # ============================================================
+
+    nome_arquivo = (
+        f"{video_id}.mp3"
+    )
+
+    caminho_storage = (
+        f"{NOME_DO_BUCKET}/{nome_arquivo}"
+    )
+
+    url_supabase_publica = (
+        f"{SUPABASE_URL}"
+        f"/storage/v1/object/public/"
+        f"{caminho_storage}"
+    )
+
+    print(
+        "📁 Arquivo destino:",
+        nome_arquivo
+    )
+
+    # ============================================================
+    # 8. VERIFICAR SE A MÚSICA JÁ EXISTE NO NEON
+    # ============================================================
+
+    musica_existente = (
+        Musica.objects
+        .filter(
+            videoId=video_id
+        )
+        .first()
+    )
+
+    # ============================================================
+    # 9. VERIFICAR SE O MP3 JÁ EXISTE NO SUPABASE
+    # ============================================================
+
+    arquivo_existe = False
+
+    url_verificacao = (
+        f"{SUPABASE_URL}"
+        f"/storage/v1/object/"
+        f"{NOME_DO_BUCKET}/"
+        f"{nome_arquivo}"
+    )
+
+    headers_verificacao = {
+        "Authorization": (
+            f"Bearer {SUPABASE_KEY}"
+        ),
+        "apikey": SUPABASE_KEY,
     }
 
     try:
-        url_youtube = f"https://www.youtube.com/watch?v={video_id}"
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url_youtube, download=False)
-            stream_url = info.get('url', '')
-            
-            if stream_url and supabase_configurado():
-                resposta_stream = requests.get(stream_url, stream=True, timeout=12)
-                url_upload_supabase = f"{SUPABASE_URL}/storage/v1/object/{NOME_DO_BUCKET}/{video_id}.mp3"
-                
-                headers_supabase = {
-                    "Authorization": f"Bearer {SUPABASE_KEY}",
-                    "apikey": SUPABASE_KEY,
-                    "Content-Type": "audio/mp3"
-                }
-                
-                upload_req = requests.post(url_upload_supabase, headers=headers_supabase, data=resposta_stream.content, timeout=15)
-                
-                if upload_req.status_code < 300:
-                    url_audio_final = url_supabase_obrigatoria
-    except Exception as e:
-        # CAPTURA SILENCIOSA: Se cair no 'Sign in to confirm you're not a bot', o desvio assume nativamente sem dar 500!
-        print(f"📡 Captura: YouTube exigiu confirmação de bot para {video_id}. Acionando desvio para o conversor alternativo.")
 
-    # Se o download falhar ou o YouTube bloquear o IP da Vercel, a URL do conversor assume imediatamente
-    if not url_audio_final:
-        url_audio_final = url_conversor_alternativo
-
-    # 3. SALVA O REGISTRO NO BANCO NEON COM A URL DEFINIDA
-    try:
-        nova_musica = Musica.objects.create(
-            titulo=titulo_limpo,
-            videoId=video_id,
-            cantor=cantor_limpo,
-            audio=url_audio_final,
+        resposta_verificacao = requests.head(
+            url_verificacao,
+            headers=headers_verificacao,
+            timeout=10
         )
-    except Exception as e:
-        return JsonResponse({"erro": f"Erro de gravacao relacional: {str(e)}"}, status=500)
 
-    return JsonResponse({
-        "status": "sucesso",
-        "id": nova_musica.id,
-        "titulo": nova_musica.titulo,
-        "videoId": nova_musica.videoId,
-        "cantor": nova_musica.cantor,
-        "audio": url_audio_final,
-        "url": url_audio_final,
-        "audio_url": url_audio_final
-    }, status=201)
+        print(
+            "🔎 Verificação do arquivo no Supabase:",
+            resposta_verificacao.status_code
+        )
+
+        if resposta_verificacao.status_code == 200:
+
+            arquivo_existe = True
+
+    except Exception as e:
+
+        print(
+            "⚠️ Não foi possível verificar "
+            "o arquivo existente:",
+            str(e)
+        )
+
+    # ============================================================
+    # 10. SE O ARQUIVO JÁ EXISTE
+    # ============================================================
+
+    if arquivo_existe:
+
+        print(
+            "✅ MP3 já existe no Supabase:",
+            nome_arquivo
+        )
+
+        if musica_existente:
+
+            musica_existente.audio = (
+                url_supabase_publica
+            )
+
+            musica_existente.titulo = (
+                titulo_limpo
+            )
+
+            musica_existente.cantor = (
+                cantor_limpo
+            )
+
+            musica_existente.save()
+
+            musica = musica_existente
+
+        else:
+
+            musica = Musica.objects.create(
+                titulo=titulo_limpo,
+                videoId=video_id,
+                cantor=cantor_limpo,
+                audio=url_supabase_publica,
+            )
+
+        return JsonResponse(
+            {
+                "status": "sucesso",
+                "id": musica.id,
+                "titulo": musica.titulo,
+                "videoId": musica.videoId,
+                "cantor": musica.cantor,
+                "audio": url_supabase_publica,
+                "url": url_supabase_publica,
+                "audio_url": url_supabase_publica
+            },
+            status=200
+        )
 
     # ============================================================
     # 11. SE EXISTE NO NEON MAS NÃO EXISTE NO SUPABASE
@@ -826,8 +847,6 @@ def processar_audio_youtube(request, video_id=None):
     # ============================================================
     # 12. CRIAR DIRETÓRIO TEMPORÁRIO
     # ============================================================
-
-    import tempfile
 
     pasta_temporaria = tempfile.mkdtemp(
         prefix="karaoke_audio_"
@@ -1954,66 +1973,133 @@ def encontrar_audio(video_id):
 # BUSCAR ÁUDIO DE UMA MÚSICA
 # ============================================================
 
-from django.shortcuts import redirect
-
 def servir_audio_supabase(request, video_id):
     """
-    Túnel de Mídia por Redirecionamento 307 com injeção manual de CORS.
-    Burlar o cache rígido do front, o limite de 4.5MB da Vercel e destrava o Tone.js!
+    Entrega o MP3 privado do Supabase através do Django.
     """
-    video_id = str(video_id).strip()
-    
-    # 1. Tenta gerar a URL temporária assinada (válida por 1 hora)
-    url_final = gerar_url_assinada_supabase(video_id, segundos=3600)
-    
-    # Fallback se a assinatura falhar: usa o link público direto da CDN do Supabase
-    if not url_final and supabase_configurado():
-        url_final = f"{SUPABASE_URL}/storage/v1/object/public/{NOME_DO_BUCKET}/{video_id}.mp3"
-        
-    # Super Fallback: Se o Supabase estiver indisponível, usa o link direto da API do Vevioz
-    if not url_final:
-        url_final = f"https://vevioz.com{video_id}"
-        
-    print(f"🔀 Redirecionando proxy antigo via HTTP 307 para: {url_final[:70]}...")
-    
-    # Criamos um Redirecionamento Temporário 307 manual
-    resposta = HttpResponseRedirect(url_final)
-    resposta.status_code = 307  # Força o status de redirecionamento temporário estrito
-    
-    # INJEÇÃO COMPLETA DE CABEÇALHOS CORS PARA DESTRAVAR O TONE.JS
-    resposta["Access-Control-Allow-Origin"] = "*"
-    resposta["Access-Control-Allow-Methods"] = "GET, HEAD, OPTIONS"
-    resposta["Access-Control-Allow-Headers"] = "*"
-    resposta["Access-Control-Expose-Headers"] = "Content-Length, Content-Range"
-    
-    return resposta
 
+    if request.method != "GET":
+        return JsonResponse(
+            {"erro": "Método não permitido."},
+            status=405
+        )
 
-    
-    
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'quiet': True,
-        'no_warnings': True,
-        'skip_download': True,
-    }
-    
+    if not video_id:
+        return JsonResponse(
+            {"erro": "videoId não informado."},
+            status=400
+        )
+
+    print(
+        "🎧 Servindo áudio pelo Django:",
+        video_id
+    )
+
+    # Gera uma URL temporária para o arquivo privado
+    signed_url = gerar_url_assinada_supabase(
+        video_id,
+        segundos=3600
+    )
+
+    print("🔗 URL assinada:", signed_url)
+
+    if not signed_url:
+        print(
+            "❌ Não foi possível gerar URL do áudio."
+        )
+
+        return JsonResponse(
+            {"erro": "Áudio não encontrado."},
+            status=404
+        )
+
     try:
-        print(f"🔎 Buscando link de transmissão oficial do YouTube para: {video_id}")
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url_youtube, download=False)
-            url_transmissao_direta = info.get('url', '')
-            
-            if url_transmissao_direta:
-                print(f"🚀 Link oficial encontrado! Redirecionando Tone.js para o Google Video CDN.")
-                # Redireciona o navegador para o link do fluxo de áudio original do YouTube
-                return redirect(url_transmissao_direta)
-                
+        resposta = requests.get(
+            signed_url,
+            timeout=30
+        )
+
+        print(
+            "📥 Supabase respondeu:",
+            resposta.status_code,
+            "Tamanho:",
+            len(resposta.content)
+        )
+
+        if resposta.status_code != 200:
+            print(
+                "❌ Erro ao baixar áudio do Supabase:",
+                resposta.text[:500]
+            )
+
+            return JsonResponse(
+                {"erro": "Não foi possível obter o áudio."},
+                status=404
+            )
+
+        response = HttpResponse(
+            resposta.content,
+            content_type="audio/mpeg"
+        )
+
+        response["Content-Length"] = str(
+            len(resposta.content)
+        )
+
+        response["Cache-Control"] = "no-cache"
+
+        return response
+
     except Exception as e:
-        print(f"⚠️ Falha ao extrair fluxo oficial: {repr(e)}")
-        
-    # Super Fallback: Se tudo falhar, tenta o conversor alternativo formatado
-    return redirect(f"https://vevioz.com{video_id}")
+        print(
+            "❌ Erro servindo áudio:",
+            str(e)
+        )
+
+        return JsonResponse(
+            {"erro": "Erro interno ao carregar áudio."},
+            status=500
+        )
+
+
+def audio_da_musica(
+    request,
+    video_id
+):
+
+    if request.method != "GET":
+
+        return JsonResponse(
+            {
+                "erro": (
+                    "Método inválido. "
+                    "Use GET."
+                )
+            },
+            status=405
+        )
+
+    # --------------------------------------------------------
+    # VALIDAR VIDEO ID
+    # --------------------------------------------------------
+
+
+
+    if not validar_video_id(
+    video_id
+):
+
+       return JsonResponse(
+        {
+            "erro": "videoId inválido."
+        },
+        status=400
+        )
+
+    print(
+        "🔎 Procurando áudio associado ao videoId:",
+        video_id
+    )
 
     # --------------------------------------------------------
     # BUSCAR MÚSICA
