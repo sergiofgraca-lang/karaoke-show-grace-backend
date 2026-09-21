@@ -526,19 +526,15 @@ def validar_video_id(video_id):
 @csrf_exempt
 def processar_audio_youtube(request, video_id=None):
     """
-    View unificada: Aceita tanto POST (criação) quanto GET (busca rápida da playlist/player).
+    Salvamento Expresso de Alta Velocidade: Persiste metadados textuais no Neon,
+    eliminando 100% o uso do yt-dlp e imagemio no POST inicial.
+    Previne erros de Bot Check do YouTube e erros 500 na nuvem da Vercel!
     """
     if request.method not in ["POST", "GET"]:
-        return JsonResponse({"erro": "Método inválido. Use POST ou GET."}, status=405)
+        return JsonResponse({"erro": "Método inválido."}, status=405)
 
-    # CORREÇÃO CHAVE: Se não veio na URL da rota, tenta capturar de todas as fontes possíveis
     if not video_id:
-        if request.method == "GET":
-            # Captura os parâmetros enviados via string de consulta (?videoId=...)
-            video_id = request.GET.get("videoId")
-            titulo = request.GET.get("titulo", "Karaoke")
-            cantor = request.GET.get("cantor", "")
-        elif request.content_type == "application/json":
+        if request.content_type == "application/json":
             try:
                 dados = json.loads(request.body)
                 video_id = dados.get("videoId")
@@ -546,20 +542,6 @@ def processar_audio_youtube(request, video_id=None):
                 cantor = dados.get("cantor", "")
             except json.JSONDecodeError:
                 return JsonResponse({"erro": "JSON inválido."}, status=400)
-        else:
-            video_id = request.POST.get("videoId")
-            titulo = request.POST.get("titulo")
-            cantor = request.POST.get("cantor", "")
-    else:
-        if request.method == "GET":
-            titulo = request.GET.get("titulo", "Karaoke")
-            cantor = request.GET.get("cantor", "")
-
-    if not video_id:
-        return JsonResponse({"erro": "O campo videoId é obrigatório."}, status=400)
-
-    # ... O restante do código de verificação de duplicidade e retorno continua igual embaixo ...
-
         else:
             video_id = request.POST.get("videoId")
             titulo = request.POST.get("titulo")
