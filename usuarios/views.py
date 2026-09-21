@@ -523,17 +523,19 @@ def validar_video_id(video_id):
     )
 
 
+from django.shortcuts import redirect
+
 @csrf_exempt
 def processar_audio_youtube(request, video_id=None):
     """
-    Roteador Inteligente: Se for POST, salva os metadados textuais no Neon em milissegundos.
-    Se for GET (chamado pelo Player), desvia o fluxo internamente para servir
-    os bytes binários do áudio em tempo real pelo túnel fatiado anti-timeout!
+    Roteador de Alta Velocidade: Salva no Neon instantaneamente via POST.
+    Se for chamado via GET pelo Player, redireciona o navegador direto para a 
+    CDN do Supabase Storage, quebrando o limite de payload e timeouts da Vercel!
     """
     if request.method not in ["POST", "GET"]:
         return JsonResponse({"erro": "Método inválido. Use POST ou GET."}, status=405)
 
-    # 1. CAPTURA DOS PARÂMETROS DE ENTRADA (MÉTODO POST OU GET)
+    # 1. CAPTURA DOS PARÂMETROS DE ENTRADA
     if not video_id:
         if request.method == "GET":
             video_id = request.GET.get("videoId")
@@ -545,7 +547,7 @@ def processar_audio_youtube(request, video_id=None):
                 video_id = dados.get("videoId")
                 titulo = dados.get("titulo")
                 cantor = dados.get("cantor", "")
-            except json.JSONDecodeError:
+            except:
                 return JsonResponse({"erro": "JSON inválido."}, status=400)
         else:
             video_id = request.POST.get("videoId")
@@ -563,48 +565,39 @@ def processar_audio_youtube(request, video_id=None):
     titulo_limpo = limpar_texto(titulo)
     cantor_limpo = limpar_texto(cantor)
 
-    url_proxy_obrigatoria = f"https://vercel.app{video_id}/"
-
-    # 2. SE FOR REQUISIÇÃO GET (CHAMADA VINDAL DO PLAYER DO FRONTEND)
+    # 2. SE FOR REQUISIÇÃO GET (CHAMADA VINDA DO PLAYER DO FRONTEND)
     if request.method == "GET":
-        print(f"🎤 [Roteador] Requisição GET detectada para o player. Desviando para túnel binário do vídeo: {video_id}")
-        # Chame diretamente a função que faz o streaming binário do áudio fatiado de 32KB
-        return servir_audio_supabase(request, video_id=video_id)
+        # Monta a URL pública e direta da CDN ultra-rápida do seu Supabase Storage
+        url_direta_supabase = f"https://supabase.co{video_id}.mp3"
+        
+        print(f"🚀 [Redirecionamento CDN] Jogando player direto para o som do Supabase: {url_direta_supabase}")
+        
+        # Faz o desvio HTTP nativo que o navegador resolve em menos de 0.01 segundos
+        return redirect(url_direta_supabase)
 
-    # 3. SE FOR REQUISIÇÃO POST (SALVAMENTO INICIAL VIA FORMULÁRIO BUSCAR)
+    # 3. SE FOR REQUISIÇÃO POST (SALVAMENTO INICIAL EXPRESSO)
+    url_proxy_obrigatoria = f"https://vercel.app{video_id}/"
     musica_existente = Musica.objects.filter(videoId=video_id).first()
     if musica_existente:
         return JsonResponse({
-            "status": "sucesso",
-            "id": musica_existente.id,
-            "titulo": musica_existente.titulo,
-            "videoId": musica_existente.videoId,
-            "cantor": musica_existente.cantor,
-            "audio": url_proxy_obrigatoria,
-            "url": url_proxy_obrigatoria,
-            "audio_url": url_proxy_obrigatoria
+            "status": "sucesso", "id": musica_existente.id, "titulo": musica_existente.titulo,
+            "videoId": musica_existente.videoId, "cantor": musica_existente.cantor,
+            "audio": url_proxy_obrigatoria, "url": url_proxy_obrigatoria, "audio_url": url_proxy_obrigatoria
         })
 
     try:
         nova_musica = Musica.objects.create(
-            titulo=titulo_limpo,
-            videoId=video_id,
-            cantor=cantor_limpo,
-            audio=url_proxy_obrigatoria,
+            titulo=titulo_limpo, videoId=video_id, cantor=cantor_limpo, audio=url_proxy_obrigatoria,
         )
     except Exception as e:
         return JsonResponse({"erro": f"Erro Neon: {str(e)}"}, status=500)
 
     return JsonResponse({
-        "status": "sucesso",
-        "id": nova_musica.id,
-        "titulo": nova_musica.titulo,
-        "videoId": nova_musica.videoId,
-        "cantor": nova_musica.cantor,
-        "audio": url_proxy_obrigatoria,
-        "url": url_proxy_obrigatoria,
-        "audio_url": url_proxy_obrigatoria
+        "status": "sucesso", "id": nova_musica.id, "titulo": nova_musica.titulo,
+        "videoId": nova_musica.videoId, "cantor": nova_musica.cantor,
+        "audio": url_proxy_obrigatoria, "url": url_proxy_obrigatoria, "audio_url": url_proxy_obrigatoria
     }, status=201)
+
 
 
 
